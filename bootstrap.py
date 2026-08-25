@@ -203,6 +203,18 @@ def cmd_status(man: dict, args) -> int:
     print(f"  {summary}")
 
     print()
+    print(bold("ssh"))
+    ssh_cfg = man.get("ssh")
+    if ssh_cfg:
+        k = Path(ssh_cfg["key"]).expanduser()
+        if k.exists():
+            print(f"  {ok('exists'.rjust(16))}  {k}")
+        else:
+            print(f"  {warn('missing'.rjust(16))}  {k}  {dim('(run: ssh)')}")
+    else:
+        print(f"  {dim('not declared'.rjust(16))}")
+
+    print()
     print(bold("packages"))
     if PACKAGES_TXT.exists():
         declared_pkgs = read_packages()
@@ -285,10 +297,11 @@ def cmd_adopt(man: dict, args) -> int:
     print()
     if args.dry_run:
         print(dim("  dry run — nothing changed"))
+    elif moved == 0:
+        print(f"  {ok('nothing to do')}  all {skipped} files already adopted")
     else:
         print(f"  adopted {bold(str(moved))}, already handled {bold(str(skipped))}")
-        if moved:
-            print(dim(f"  originals backed up under {backup_dir()}"))
+        print(dim(f"  originals backed up under {backup_dir()}"))
     return 0
 
 
@@ -332,6 +345,8 @@ def cmd_link(man: dict, args) -> int:
     print()
     if args.dry_run:
         print(dim("  dry run — nothing changed"))
+    elif made == replaced == 0:
+        print(f"  {ok('nothing to do')}  all {already} files already linked")
     else:
         print(f"  linked {bold(str(made))}, already linked {bold(str(already))}, replaced {bold(str(replaced))}")
         if replaced:
@@ -477,17 +492,68 @@ def cmd_packages_install(man: dict, args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# ssh
+# ---------------------------------------------------------------------------
+
+def cmd_ssh(man: dict, args) -> int:
+    cfg = man.get("ssh")
+    if not cfg:
+        print(f"  {dim('no [ssh] section in manifest — skipped')}")
+        return 0
+
+    key = Path(cfg["key"]).expanduser()
+    pub = key.with_suffix(".pub")
+
+    if key.exists():
+        fp = subprocess.run(["ssh-keygen", "-lf", str(pub if pub.exists() else key)],
+                            capture_output=True, text=True).stdout.strip()
+        print(f"  {ok('exists'.rjust(16))}  {key}  {dim(fp)}")
+        # self-heal permissions, quietly
+        fixed = []
+        if key.parent.stat().st_mode & 0o777 != 0o700:
+            key.parent.chmod(0o700); fixed.append(str(key.parent))
+        if key.stat().st_mode & 0o777 != 0o600:
+            key.chmod(0o600); fixed.append(str(key))
+        if fixed:
+            print(f"  {warn('fixed perms'.rjust(16))}  {', '.join(fixed)}")
+        return 0
+
+    if args.dry_run:
+        print(f"  {dim('would generate')}  {cfg.get('type', 'ed25519')} key at {key}")
+        return 0
+
+    key.parent.mkdir(parents=True, exist_ok=True)
+    key.parent.chmod(0o700)
+    cmd = ["ssh-keygen",
+           "-t", cfg.get("type", "ed25519"),
+           "-a", str(cfg.get("rounds", 100)),
+           "-C", cfg.get("comment", ""),
+           "-f", str(key), "-N", ""]
+    if subprocess.run(cmd, capture_output=True, text=True).returncode != 0:
+        die(f"ssh-keygen failed: {' '.join(cmd)}")
+    fp = subprocess.run(["ssh-keygen", "-lf", str(pub)],
+                        capture_output=True, text=True).stdout.strip()
+    print(f"  {ok('generated'.rjust(16))}  {key}  {dim(fp)}")
+    print(f"  {warn('action needed'.rjust(16))}  add the public key to GitHub/servers:")
+    print(f"                    {pub.read_text().strip()}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # bootstrap
 # ---------------------------------------------------------------------------
 
 def cmd_bootstrap(man: dict, args) -> int:
-    print(bold("1/3  linking config"))
+    print(bold("1/4  ssh key"))
+    cmd_ssh(man, args)
+    print()
+    print(bold("2/4  linking config"))
     cmd_link(man, args)
     print()
-    print(bold("2/3  installing packages"))
+    print(bold("3/4  installing packages"))
     cmd_packages_install(man, args)
     print()
-    print(bold("3/3  reloading"))
+    print(bold("4/4  reloading"))
     if args.dry_run:
         print(dim("  would reload hyprland"))
         return 0
@@ -521,7 +587,8 @@ def main() -> int:
     sub.add_parser("adopt", help="pull declared files into the repo and symlink them back")
     sub.add_parser("link", help="symlink repo files into $HOME")
     sub.add_parser("unlink", help="remove symlinks, restore real files")
-    sub.add_parser("bootstrap", help="fresh machine: link + install packages + reload")
+    sub.add_parser("ssh", help="generate the declared SSH key if missing (no-op otherwise)")
+    sub.add_parser("bootstrap", help="fresh machine: ssh key + link + packages + reload")
 
     pk = sub.add_parser("packages", help="manage the tracked package list")
     pksub = pk.add_subparsers(dest="subcmd", required=True)
@@ -535,6 +602,7 @@ def main() -> int:
         return {"sync": cmd_packages_sync, "install": cmd_packages_install}[args.subcmd](man, args)
     return {
         "status": cmd_status,
+        "ssh": cmd_ssh,
         "adopt": cmd_adopt,
         "link": cmd_link,
         "unlink": cmd_unlink,

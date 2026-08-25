@@ -85,3 +85,15 @@ ignore = [
 
 # Suffixes to drop (debug packages get pulled in by AUR builds).
 ignore_suffixes = ["-debug"]
+
+# ---------------------------------------------------------------------------
+# SSH key. Generated only if the private key does not exist (no-op otherwise).
+# Comment is the git identity email; no passphrase — the disk is LUKS
+# encrypted, and one can be added later with `ssh-keygen -p`.
+# ---------------------------------------------------------------------------
+
+[ssh]
+key     = "~/.ssh/id_ed25519"
+type    = "ed25519"
+rounds  = 100
+comment = "stevenrguido@gmail.com"

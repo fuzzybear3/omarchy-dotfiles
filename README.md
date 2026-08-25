@@ -23,13 +23,17 @@ behaviour) so Omarchy updates can still drop new files into `~/.config`.
 ```sh
 git clone git@github.com:fuzzybear3/omarchy-dotfiles.git ~/lab/omarchy-dotfiles
 cd ~/lab/omarchy-dotfiles
-./bootstrap.py bootstrap        # link configs + install packages + reload hyprland
+./bootstrap.py bootstrap        # ssh key + link configs + install packages + reload
 ```
+
+Every step detects current state and no-ops when there is nothing to do —
+`bootstrap` is safe to run at any time, not just on a fresh machine.
 
 ## Daily use
 
 ```sh
 ./bootstrap.py status           # exit 1 if anything drifted — safe for scripts
+./bootstrap.py ssh              # generate the declared SSH key if missing
 ./bootstrap.py adopt            # start tracking a newly declared file
 ./bootstrap.py packages sync    # refresh packages.txt after (un)installing things
 ./bootstrap.py -n <cmd>         # dry-run any command
