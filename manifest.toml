@@ -1,0 +1,87 @@
+# omarchy-dotfiles — declarative source of truth for this machine.
+#
+# Everything this repo manages is declared here. Nothing is implicit:
+# if a config file or package is not listed (or derivable) below, it is
+# not managed. `bootstrap.py status` reports anything that has drifted.
+
+[meta]
+# Stow package directory. `stow -t ~ home` is equivalent to `bootstrap.py link`.
+package = "home"
+target  = "~"
+
+# Paths never adopted or linked, even when inside a declared directory.
+# nvim/theme.lua is Omarchy's live theme symlink — machine state, not config.
+exclude = [".config/nvim/lua/plugins/theme.lua"]
+
+# ---------------------------------------------------------------------------
+# Config files. Paths are relative to $HOME.
+# A path may be a file or a directory (directories are expanded recursively).
+# ---------------------------------------------------------------------------
+
+[[config]]
+path = ".config/hypr/monitors.lua"
+note = "Display layout: external ASUS VA249QGS positioned left of the laptop panel"
+
+[[config]]
+path = ".config/hypr/input.lua"
+note = "Keyboard: us layout, caps as compose, both-shift cancels capslock"
+
+[[config]]
+path = ".config/omarchy/shell.json"
+note = "Bar layout: keyboard-layout widget moved ahead of clock/weather"
+
+[[config]]
+path = ".config/omarchy/shell.toml"
+note = "Bar font base-size 10"
+
+[[config]]
+path = ".config/alacritty/alacritty.toml"
+note = "Font size 9 -> 8"
+
+[[config]]
+path = ".config/foot/foot.ini"
+note = "Font size 9 -> 8"
+
+[[config]]
+path = ".config/kitty/kitty.conf"
+note = "Font size 9 -> 8"
+
+[[config]]
+path = ".config/nvim"
+note = "LazyVim starter + personal plugins; lazy-lock.json pins plugin versions"
+
+[[config]]
+path = ".config/mise/config.toml"
+note = "Toolchain versions: claude, codex, gh, node"
+
+[[config]]
+path = ".config/environment.d/omarchy-firefox-wayland.conf"
+note = "Force Firefox onto native Wayland"
+
+# ---------------------------------------------------------------------------
+# Packages.
+#
+# packages.txt is GENERATED, never hand-edited: `bootstrap.py packages sync`
+# diffs `pacman -Qqe` against Omarchy's own shipped manifests, so the file
+# ends up holding only what YOU added on top of the distro.
+# ---------------------------------------------------------------------------
+
+[packages]
+# Omarchy's own package manifests, diffed out so they don't pollute the list.
+distro_manifests = ["/usr/share/omarchy/install/omarchy-base.packages",
+                    "/usr/share/omarchy/install/omarchy-other.packages"]
+
+# Base-system and distro packages that are explicitly installed but are not
+# "yours" in any meaningful sense — excluded from packages.txt.
+ignore = [
+  "amd-ucode",        # CPU microcode, hardware-dependent
+  "efibootmgr",       # bootloader plumbing
+  "mkinitcpio",       # initramfs plumbing
+  "sudo",             # base system
+  "omarchy",          # the distro itself
+  "omarchy-keyring",
+  "omarchy-settings",
+]
+
+# Suffixes to drop (debug packages get pulled in by AUR builds).
+ignore_suffixes = ["-debug"]
