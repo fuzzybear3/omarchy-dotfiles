@@ -4,11 +4,16 @@
 # Regenerate after installing or removing anything you want tracked.
 
 # --- official repos (pacman) ---
+fcitx5-mozc
 firefox
 kicad
 kicad-library
 kicad-library-3d
+python-psycopg2
+python-pytest
+tailscale
 voxtype-bin
 
 # --- AUR (yay) ---
+teams-for-linux
 zsa-keymapp-bin

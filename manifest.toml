@@ -58,6 +58,22 @@ note = "Toolchain versions: claude, codex, gh, node"
 path = ".config/environment.d/omarchy-firefox-wayland.conf"
 note = "Force Firefox onto native Wayland"
 
+[[config]]
+path = ".config/fcitx5/profile"
+note = "Japanese input: Mozc alongside keyboard-us; Ctrl+Space toggles"
+
+[[config]]
+path = ".config/chromium-flags.conf"
+note = "Omarchy defaults + --enable-wayland-ime so fcitx5 works in Chromium/Electron"
+
+[[config]]
+path = ".claude/statusline.sh"
+note = "Claude Code status line (p10k snazzy palette); wired up via statusLine in settings.json"
+
+[[config]]
+path = ".claude/settings.json"
+note = "Claude Code settings: statusLine, model, fullscreen TUI; Claude Code itself edits this at runtime"
+
 # ---------------------------------------------------------------------------
 # Packages.
 #
