@@ -13,8 +13,9 @@ import qs.Ui as Ui
 // `omarchy-tasks login` opens the approval page in the browser and reports
 // through notifications, no terminal involved — and a short poll flips the
 // widget to the count as soon as the approval lands. Logged IN a click
-// captures a task; at zero due the widget hides (the quiet state);
-// unreachable it dims the last count to an em-dash.
+// captures a task and the widget stays put at zero due (an earlier "quiet
+// state" hid it there — which read as the plugin vanishing the moment login
+// succeeded); unreachable it dims the last count to an em-dash.
 // (qs.Ui is imported under a namespace because this file is itself named
 // BarWidget.qml — the japanquake plugin's convention.)
 Ui.Panel {
@@ -27,7 +28,7 @@ Ui.Panel {
   property bool reachable: true
   readonly property bool loggedOut: dueCount === -1
 
-  visible: loggedOut || dueCount > 0 || (dueCount >= 0 && !reachable)
+  visible: true
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
