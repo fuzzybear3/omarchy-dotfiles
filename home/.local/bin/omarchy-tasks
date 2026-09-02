@@ -36,21 +36,35 @@ api() {
     curl "${args[@]}" "$TASKS_URL$path"
 }
 
+# The login runs headless from the bar widget's button, so every outcome —
+# not just success — must reach the user as a notification.
+login_fail() {
+    echo "login failed: $1" >&2
+    notify-send -u critical -a Tasks "Login failed" "$1" 2>/dev/null || true
+    exit 1
+}
+
 login() {
     local device_config issuer client_id discovery device grant
-    device_config=$(curl -sS --fail "$TASKS_URL/auth/device-config")
-    issuer=$(jq -re .issuer <<<"$device_config")
+    device_config=$(curl -sS --fail -m 10 "$TASKS_URL/auth/device-config") \
+        || login_fail "could not reach $TASKS_URL — is the service deployed, and are you on the tailnet?"
+    issuer=$(jq -re .issuer <<<"$device_config") \
+        || login_fail "the server published no OIDC issuer"
     client_id=$(jq -re .client_id <<<"$device_config")
 
-    discovery=$(curl -sS --fail "${issuer%/}/.well-known/openid-configuration")
+    discovery=$(curl -sS --fail -m 10 "${issuer%/}/.well-known/openid-configuration") \
+        || login_fail "could not fetch the issuer's discovery document from $issuer"
     local device_ep token_ep
-    device_ep=$(jq -re .device_authorization_endpoint <<<"$discovery")
+    device_ep=$(jq -re .device_authorization_endpoint <<<"$discovery") \
+        || login_fail "the issuer offers no device flow (is blueprint 21's brand flow applied?)"
     token_ep=$(jq -re .token_endpoint <<<"$discovery")
 
     grant=$(curl -sS --fail -X POST "$device_ep" \
-        -d "client_id=$client_id" -d "scope=openid profile tasks")
+        -d "client_id=$client_id" -d "scope=openid profile tasks") \
+        || login_fail "the device authorization was refused (client $client_id)"
     local user_code verify_url interval expires device_code
-    device_code=$(jq -re .device_code <<<"$grant")
+    device_code=$(jq -re .device_code <<<"$grant") \
+        || login_fail "malformed device authorization response"
     user_code=$(jq -re .user_code <<<"$grant")
     verify_url=$(jq -re '.verification_uri_complete // .verification_uri' <<<"$grant")
     interval=$(jq -r '.interval // 5' <<<"$grant")
@@ -58,6 +72,8 @@ login() {
 
     echo "Approve the request in your browser (code: $user_code)"
     echo "  $verify_url"
+    notify-send -a Tasks "Approve the login" \
+        "A browser tab is opening (code $user_code)" 2>/dev/null || true
     setsid xdg-open "$verify_url" >/dev/null 2>&1 || true
 
     local deadline=$((SECONDS + expires)) response error
@@ -80,11 +96,12 @@ login() {
         case "$error" in
             authorization_pending) ;;
             slow_down) interval=$((interval + 5)) ;;
-            *) echo "login refused: $error" >&2; return 1 ;;
+            access_denied) login_fail "the request was denied in the browser" ;;
+            expired_token) login_fail "the code expired before approval" ;;
+            *) login_fail "the token endpoint refused: $error" ;;
         esac
     done
-    echo "the device code expired before approval" >&2
-    return 1
+    login_fail "the code expired before approval"
 }
 
 capture() {
