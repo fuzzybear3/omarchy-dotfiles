@@ -28,6 +28,22 @@ path = ".config/hypr/input.lua"
 note = "Keyboard: us layout, caps as compose, both-shift cancels capslock"
 
 [[config]]
+path = ".config/hypr/bindings.lua"
+note = "Personal keybindings: bromodachi, SUPER+SHIFT+T task quick-capture"
+
+[[config]]
+path = ".local/bin/omarchy-tasks"
+note = "Personal-tasks companion: login (OIDC device flow), capture, count, today. Self-contained curl+jq client of the platform tasks service"
+
+[[config]]
+path = ".config/tasks/config"
+note = "Tasks service origin (TASKS_URL). The token beside it is written by `omarchy-tasks login` and deliberately NOT managed"
+
+[[config]]
+path = ".config/omarchy/plugins/steveng.tasks"
+note = "Bar widget: due-today task count via `omarchy-tasks count`; click captures. Hidden until logged in and at zero"
+
+[[config]]
 path = ".config/omarchy/shell.json"
 note = "Bar layout: keyboard-layout widget moved ahead of clock/weather"
 
