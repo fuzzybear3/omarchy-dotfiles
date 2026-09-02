@@ -6,9 +6,9 @@
 #
 #   omarchy-tasks login     OIDC device flow → ~/.config/tasks/token (0600)
 #   omarchy-tasks capture   one-line quick capture (gum prompt → POST)
-#   omarchy-tasks count     due-today+overdue count, for the bar face
-#   omarchy-tasks panel     {date, today[], inbox[]} JSON, for the panel
-#   omarchy-tasks add T     create an open task titled T (no prompt)
+#   omarchy-tasks count     open-task count (stack depth), for the bar face
+#   omarchy-tasks panel     {date, stack[], folders[]} JSON, for the panel
+#   omarchy-tasks add [-t F] T   push task T, optionally into folder F
 #   omarchy-tasks done N V  mark task N done, under the version V read
 #   omarchy-tasks today     the today view, readable
 #   omarchy-tasks open      the web interface (once it exists)
@@ -145,31 +145,50 @@ capture() {
     fi
 }
 
+# Stack depth: every open task, undated ones included — the tasks are a
+# stack, not a calendar (decision 2026-09-02).
 count() {
     [ -s "$TOKEN_FILE" ] || exit 3
     local response
-    response=$(api GET "/api/tasks?view=today&today=$(date +%F)" 2>/dev/null) || exit 2
+    response=$(api GET "/api/tasks?today=$(date +%F)" 2>/dev/null) || exit 2
     jq -re '.tasks | length' <<<"$response" 2>/dev/null || exit 2
 }
 
-# The panel's one fetch: both views under the same civil date, merged. Tasks
+# The panel's one fetch: all open tasks, shaped as the stack (untagged,
+# newest first — seq is creation order) plus one folder per first tag. Tasks
 # carry seq/title/due/version — everything a row and its done-click need.
 panel() {
     [ -s "$TOKEN_FILE" ] || exit 3
-    local d today inbox
+    local d response
     d=$(date +%F)
-    today=$(api GET "/api/tasks?view=today&today=$d" 2>/dev/null) || exit 2
-    inbox=$(api GET "/api/tasks?view=inbox&today=$d" 2>/dev/null) || exit 2
-    jq -cn --argjson t "$today" --argjson i "$inbox" --arg d "$d" \
-        '{date: $d, today: $t.tasks, inbox: $i.tasks}' || exit 2
+    response=$(api GET "/api/tasks?today=$d" 2>/dev/null) || exit 2
+    jq -cn --argjson all "$response" --arg d "$d" '
+        ($all.tasks | sort_by(-.seq)) as $open
+        | {date: $d,
+           stack: [$open[] | select((.tags // []) | length == 0)],
+           folders: ([$open[] | select((.tags // []) | length > 0)]
+             | group_by(.tags[0])
+             | map({name: .[0].tags[0], tasks: .})
+             | sort_by(.name))}' || exit 2
 }
 
-# Promptless create, for the panel's inline capture row.
+# Promptless create, for the panel's inline capture row. -t files the task
+# into a folder (a tag, the server's vocabulary).
 add() {
+    local tag=""
+    if [ "${1:-}" = "-t" ]; then
+        tag="${2:-}"
+        shift 2 || true
+    fi
     local title="${1:-}"
-    [ -n "$title" ] || { echo "usage: omarchy-tasks add <title>" >&2; exit 2; }
+    [ -n "$title" ] || { echo "usage: omarchy-tasks add [-t folder] <title>" >&2; exit 2; }
     local doc
-    doc=$(jq -cn --arg title "$title" '{title: $title, status: "open"}')
+    if [ -n "$tag" ]; then
+        doc=$(jq -cn --arg title "$title" --arg tag "$tag" \
+            '{title: $title, status: "open", tags: [$tag]}')
+    else
+        doc=$(jq -cn --arg title "$title" '{title: $title, status: "open"}')
+    fi
     api POST /api/tasks "$doc" >/dev/null || exit 2
 }
 
@@ -193,8 +212,8 @@ case "${1:-}" in
     capture) capture ;;
     count) count ;;
     panel) panel ;;
-    add) add "${2:-}" ;;
-    done) done_task "${2:-}" "${3:-}" ;;
+    add) shift; add "$@" ;;
+    done) shift; done_task "$@" ;;
     today) today ;;
     open) exec xdg-open "$TASKS_URL" ;;
     *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;

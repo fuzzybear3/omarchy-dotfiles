@@ -15,13 +15,14 @@ Item {
   // Injected by shell.qml when the service is mounted.
   property var shell: null
 
-  // Bar-face state, from `count`. -1: not logged in.
-  property int dueCount: -1
+  // Bar-face state, from `count`: the stack depth (every open task — the
+  // tasks are a stack, not a calendar). -1: not logged in.
+  property int openCount: -1
   property bool reachable: true
-  readonly property bool loggedOut: dueCount === -1
+  readonly property bool loggedOut: openCount === -1
 
-  // Panel state, from `panel`: {date, today: [], inbox: []}. null until a
-  // panel first opens.
+  // Panel state, from `panel`: {date, stack: [], folders: [{name, tasks}]}.
+  // null until a panel first opens.
   property var panelData: null
   property bool loading: false
 
@@ -33,6 +34,7 @@ Item {
   property int doneSeq: 0
   property int doneVersion: 0
   property string addTitle: ""
+  property string addTag: ""
 
   // One line at mount: seeing it once in the journal — with two monitors —
   // is the proof the service pattern took.
@@ -78,10 +80,11 @@ Item {
     doneProc.running = true
   }
 
-  function addTask(title) {
+  function addTask(title, tag) {
     title = String(title).trim()
     if (title === "" || addProc.running) return
     addTitle = title
+    addTag = tag === undefined ? "" : String(tag).trim()
     addProc.running = true
   }
 
@@ -105,9 +108,9 @@ Item {
     if (loggedOut) return "Not logged in"
     if (!reachable) return "Unreachable — last known state"
     var parts = []
-    parts.push(dueCount === 0 ? "nothing due today" : dueCount + " due today")
-    if (panelData && panelData.inbox.length > 0)
-      parts.push(panelData.inbox.length + " in the inbox")
+    parts.push(openCount === 0 ? "stack empty" : openCount + " open")
+    if (panelData && panelData.folders.length > 0)
+      parts.push(panelData.folders.length + " folder" + (panelData.folders.length > 1 ? "s" : ""))
     if (loading) parts.push("refreshing…")
     return parts.join(" · ")
   }
@@ -122,10 +125,10 @@ Item {
       if (exitCode === 0) {
         const n = parseInt(countOut.text.trim(), 10)
         service.reachable = true
-        service.dueCount = isNaN(n) ? 0 : n
+        service.openCount = isNaN(n) ? 0 : n
         loginPoll.stop()
       } else if (exitCode === 3) {
-        service.dueCount = -1
+        service.openCount = -1
       } else {
         // A token exists but the server is unreachable (off-tailnet, or the
         // service is down): keep the last count, dimmed by the faces.
@@ -149,7 +152,7 @@ Item {
           service.reachable = false
         }
       } else if (exitCode === 3) {
-        service.dueCount = -1
+        service.openCount = -1
       } else {
         service.reachable = false
       }
@@ -172,7 +175,9 @@ Item {
 
   Process {
     id: addProc
-    command: ["omarchy-tasks", "add", service.addTitle]
+    command: service.addTag === ""
+      ? ["omarchy-tasks", "add", service.addTitle]
+      : ["omarchy-tasks", "add", "-t", service.addTag, service.addTitle]
     onExited: function() {
       service.fetchPanel()
       service.refresh()

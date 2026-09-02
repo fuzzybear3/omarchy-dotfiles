@@ -12,7 +12,8 @@ import qs.Ui as Ui
 // The bar face is the list-check with the due count (a dimmed key when
 // logged out). Clicking opens an anchored panel: logged out it holds one
 // Login button running the device flow headlessly; logged in it shows the
-// today view (click ✓ to complete), the inbox, and an inline capture row.
+// STACK (open untagged tasks, newest on top — a stack, not a calendar),
+// one folder per tag, and an inline capture row ("#folder title" files it).
 // The SUPER+SHIFT+T floating-terminal capture is untouched.
 // (qs.Ui is imported under a namespace because this file is itself named
 // BarWidget.qml — the japanquake plugin's convention.)
@@ -26,9 +27,9 @@ Ui.Panel {
   // Null-safe proxies: the service mounts at shell startup, but bindings
   // evaluate before it lands, and a broken mount must degrade to a dimmed
   // glyph rather than a wall of TypeErrors.
-  readonly property int dueCount: svc ? svc.dueCount : -1
+  readonly property int openCount: svc ? svc.openCount : -1
   readonly property bool reachable: svc ? svc.reachable : true
-  readonly property bool loggedOut: dueCount === -1
+  readonly property bool loggedOut: openCount === -1
   readonly property var panelData: svc ? svc.panelData : null
   readonly property bool loading: svc ? svc.loading : false
 
@@ -66,11 +67,11 @@ Ui.Panel {
     // already been eaten once by an edit-tool round trip.
     text: root.loggedOut
       ? "\uf084"
-      : "\uf0ae " + (root.reachable ? root.dueCount : "–")
+      : "\uf0ae " + (root.reachable ? root.openCount : "–")
     tooltipText: root.loggedOut
       ? "Personal tasks — not logged in"
       : root.reachable
-        ? "Tasks due today — click for the panel"
+        ? "Open tasks on the stack — click for the panel"
         : "Tasks service unreachable — showing the last known state"
     onPressed: root.toggle()
   }
@@ -151,58 +152,27 @@ Ui.Panel {
 
         Ui.PanelSeparator { foreground: root.foreground; visible: !root.loggedOut }
 
-        // ---------- Today ----------
+        // ---------- The stack ----------
         Column {
           width: parent.width
           spacing: Style.space(3)
           visible: !root.loggedOut
 
           SectionHeading {
-            title: "TODAY"
-            value: root.panelData ? String(root.panelData.today.length) : ""
+            title: "STACK"
+            value: root.panelData ? String(root.panelData.stack.length) : ""
           }
 
           Text {
-            visible: root.panelData !== null && root.panelData.today.length === 0
-            text: "Nothing due today"
+            visible: root.panelData !== null && root.panelData.stack.length === 0
+            text: "Stack empty — capture something below"
             color: root.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
 
           Repeater {
-            model: root.panelData ? root.panelData.today : []
-            TaskRow {
-              required property var modelData
-              task: modelData
-              overdue: root.panelData !== null && modelData.due < root.panelData.date
-            }
-          }
-        }
-
-        Ui.PanelSeparator { foreground: root.foreground; visible: !root.loggedOut }
-
-        // ---------- Inbox ----------
-        Column {
-          width: parent.width
-          spacing: Style.space(3)
-          visible: !root.loggedOut
-
-          SectionHeading {
-            title: "INBOX"
-            value: root.panelData ? String(root.panelData.inbox.length) : ""
-          }
-
-          Text {
-            visible: root.panelData !== null && root.panelData.inbox.length === 0
-            text: "Empty — capture something below"
-            color: root.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-
-          Repeater {
-            model: root.panelData ? root.panelData.inbox : []
+            model: root.panelData ? root.panelData.stack : []
             TaskRow {
               required property var modelData
               task: modelData
@@ -215,6 +185,34 @@ Ui.Panel {
             color: root.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
+          }
+        }
+
+        // ---------- Folders: one section per tag ----------
+        Repeater {
+          model: root.panelData ? root.panelData.folders : []
+
+          Column {
+            id: folderCol
+            required property var modelData
+            width: parent ? parent.width : 0
+            spacing: Style.space(3)
+            visible: !root.loggedOut
+
+            Ui.PanelSeparator { foreground: root.foreground }
+
+            SectionHeading {
+              title: folderCol.modelData.name.toUpperCase()
+              value: String(folderCol.modelData.tasks.length)
+            }
+
+            Repeater {
+              model: folderCol.modelData.tasks
+              TaskRow {
+                required property var modelData
+                task: modelData
+              }
+            }
           }
         }
 
@@ -252,7 +250,16 @@ Ui.Panel {
             clip: true
             selectByMouse: true
             onAccepted: {
-              if (root.svc) root.svc.addTask(text)
+              var t = text.trim()
+              var tag = ""
+              if (t.charAt(0) === "#") {
+                var sp = t.indexOf(" ")
+                if (sp > 1) {
+                  tag = t.slice(1, sp)
+                  t = t.slice(sp + 1).trim()
+                }
+              }
+              if (root.svc) root.svc.addTask(t, tag)
               text = ""
             }
             Keys.onEscapePressed: {
@@ -262,7 +269,7 @@ Ui.Panel {
 
             Text {
               visible: captureInput.text === "" && !captureInput.activeFocus
-              text: "New task… (Enter to add)"
+              text: "New task…  (#folder title files it)"
               color: root.muted
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
