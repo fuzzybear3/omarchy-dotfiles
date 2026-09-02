@@ -2,10 +2,11 @@
 #
 # Everything this repo manages is declared here. Nothing is implicit:
 # if a config file or package is not listed (or derivable) below, it is
-# not managed. `bootstrap.py status` reports anything that has drifted.
+# not managed. Running ./bootstrap.py converges the machine to this file.
 
 [meta]
-# Stow package directory. `stow -t ~ home` is equivalent to `bootstrap.py link`.
+# Stow package directory. `bootstrap.py link` runs `stow --no-folding -t ~ home`
+# after backing up anything a link would replace.
 package = "home"
 target  = "~"
 
@@ -81,9 +82,10 @@ note = "Claude Code settings: statusLine, model, fullscreen TUI; Claude Code its
 # ---------------------------------------------------------------------------
 # Packages.
 #
-# packages.txt is GENERATED, never hand-edited: `bootstrap.py packages sync`
-# diffs `pacman -Qqe` against Omarchy's own shipped manifests, so the file
-# ends up holding only what YOU added on top of the distro.
+# packages.txt is GENERATED: each run installs what it lists but is missing,
+# then rewrites it from `pacman -Qqe` diffed against Omarchy's own shipped
+# manifests, so it only holds what YOU added on top of the distro. Deleting
+# a line (plus uninstalling) is how a package leaves the list.
 # ---------------------------------------------------------------------------
 
 [packages]
