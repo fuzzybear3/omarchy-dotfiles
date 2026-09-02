@@ -47,6 +47,10 @@ path = ".config/kitty/kitty.conf"
 note = "Font size 9 -> 8"
 
 [[config]]
+path = ".config/herdr/config.toml"
+note = "Agent multiplexer, configured to mirror the old tmux setup (ctrl+space prefix); agent sidebar rows show each Claude session title. File only — the rest of .config/herdr is sockets, logs and session state"
+
+[[config]]
 path = ".config/nvim"
 note = "LazyVim starter + personal plugins; lazy-lock.json pins plugin versions"
 
