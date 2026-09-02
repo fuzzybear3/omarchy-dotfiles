@@ -6,12 +6,15 @@
 #
 #   omarchy-tasks login     OIDC device flow → ~/.config/tasks/token (0600)
 #   omarchy-tasks capture   one-line quick capture (gum prompt → POST)
-#   omarchy-tasks count     due-today+overdue count, for the bar widget
+#   omarchy-tasks count     due-today+overdue count, for the bar face
+#   omarchy-tasks panel     {date, today[], inbox[]} JSON, for the panel
+#   omarchy-tasks add T     create an open task titled T (no prompt)
+#   omarchy-tasks done N V  mark task N done, under the version V read
 #   omarchy-tasks today     the today view, readable
 #   omarchy-tasks open      the web interface (once it exists)
 #
-# Exit codes for `count` (the widget keys off them): 0 with the number on
-# stdout; 3 not logged in; 2 unreachable/refused.
+# Exit codes for `count` and `panel` (the shell service keys off them):
+# 0 with the payload on stdout; 3 not logged in; 2 unreachable/refused.
 set -euo pipefail
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tasks"
@@ -149,6 +152,37 @@ count() {
     jq -re '.tasks | length' <<<"$response" 2>/dev/null || exit 2
 }
 
+# The panel's one fetch: both views under the same civil date, merged. Tasks
+# carry seq/title/due/version — everything a row and its done-click need.
+panel() {
+    [ -s "$TOKEN_FILE" ] || exit 3
+    local d today inbox
+    d=$(date +%F)
+    today=$(api GET "/api/tasks?view=today&today=$d" 2>/dev/null) || exit 2
+    inbox=$(api GET "/api/tasks?view=inbox&today=$d" 2>/dev/null) || exit 2
+    jq -cn --argjson t "$today" --argjson i "$inbox" --arg d "$d" \
+        '{date: $d, today: $t.tasks, inbox: $i.tasks}' || exit 2
+}
+
+# Promptless create, for the panel's inline capture row.
+add() {
+    local title="${1:-}"
+    [ -n "$title" ] || { echo "usage: omarchy-tasks add <title>" >&2; exit 2; }
+    local doc
+    doc=$(jq -cn --arg title "$title" '{title: $title, status: "open"}')
+    api POST /api/tasks "$doc" >/dev/null || exit 2
+}
+
+# `done` is a shell keyword, hence the function name.
+done_task() {
+    local seq="${1:-}" version="${2:-}"
+    [ -n "$seq" ] && [ -n "$version" ] \
+        || { echo "usage: omarchy-tasks done <seq> <version>" >&2; exit 2; }
+    local doc
+    doc=$(jq -cn --argjson v "$version" '{status: "done", expected_version: $v}')
+    api POST "/api/tasks/$seq/status" "$doc" >/dev/null || exit 2
+}
+
 today() {
     api GET "/api/tasks?view=today&today=$(date +%F)" \
         | jq -r '.tasks[] | "\(.seq)\t\(.due // "")\t\(.title)"'
@@ -158,7 +192,10 @@ case "${1:-}" in
     login) login ;;
     capture) capture ;;
     count) count ;;
+    panel) panel ;;
+    add) add "${2:-}" ;;
+    done) done_task "${2:-}" "${3:-}" ;;
     today) today ;;
     open) exec xdg-open "$TASKS_URL" ;;
-    *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

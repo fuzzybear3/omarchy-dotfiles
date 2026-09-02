@@ -2,18 +2,20 @@
   "schemaVersion": 1,
   "id": "steveng.tasks",
   "name": "Personal tasks",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Steven Guido",
-  "description": "Due-today count from the platform's personal tasks service; click to capture",
+  "description": "Due-today count from the platform tasks service; click for the panel (today, inbox, capture)",
   "kinds": [
+    "service",
     "bar-widget"
   ],
   "entryPoints": {
+    "service": "Service.qml",
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Personal tasks",
-    "description": "Due-today count; click to capture a task",
+    "description": "Tasks due today; panel with today view, inbox, and inline capture",
     "category": "Productivity",
     "allowMultiple": false
   }
