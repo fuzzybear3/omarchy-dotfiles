@@ -80,6 +80,18 @@ path = ".claude/settings.json"
 note = "Claude Code settings: statusLine, model, fullscreen TUI; Claude Code itself edits this at runtime"
 
 # ---------------------------------------------------------------------------
+# System state: group memberships (usermod -aG) and services kept enabled
+# and running (systemctl enable --now). A group change only applies to new
+# login sessions, so the run reports "pending" until the next re-login.
+# docker group + service: server-systems containerized test runner needs
+# the socket. uucp: USB serial is root:uucp on Arch — WebSerial provisioning.
+# ---------------------------------------------------------------------------
+
+[system]
+groups   = ["docker", "uucp"]
+services = ["docker"]
+
+# ---------------------------------------------------------------------------
 # Packages.
 #
 # packages.txt is GENERATED: each run installs what it lists but is missing,
