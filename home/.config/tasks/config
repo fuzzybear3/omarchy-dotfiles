@@ -1,0 +1,5 @@
+# Sourced by omarchy-tasks (a plain shell fragment). The personal tasks
+# service's origin — dev-box-0 while the service iterates there; flip when it
+# is promoted to the always-on host. The token lives beside this file
+# (`omarchy-tasks login` writes it) and is deliberately NOT in the dotfiles.
+TASKS_URL=https://tasks.nmc.internal

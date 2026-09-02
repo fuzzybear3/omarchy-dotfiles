@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "steveng.tasks",
+  "name": "Personal tasks",
+  "version": "1.0.0",
+  "author": "Steven Guido",
+  "description": "Due-today count from the platform's personal tasks service; click to capture",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Personal tasks",
+    "description": "Due-today count; click to capture a task",
+    "category": "Productivity",
+    "allowMultiple": false
+  }
+}

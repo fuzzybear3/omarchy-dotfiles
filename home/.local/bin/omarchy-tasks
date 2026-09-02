@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# omarchy-tasks — the Omarchy companion of the platform's personal tasks
+# service (server-systems, apps/tasks). Self-contained on purpose: curl + jq
+# against the HTTP API, so the dotfiles need no compiled client and nothing
+# built elsewhere (its design §6; the `tasks` CLI still exists server-side).
+#
+#   omarchy-tasks login     OIDC device flow → ~/.config/tasks/token (0600)
+#   omarchy-tasks capture   one-line quick capture (gum prompt → POST)
+#   omarchy-tasks count     due-today+overdue count, for the bar widget
+#   omarchy-tasks today     the today view, readable
+#   omarchy-tasks open      the web interface (once it exists)
+#
+# Exit codes for `count` (the widget keys off them): 0 with the number on
+# stdout; 3 not logged in; 2 unreachable/refused.
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tasks"
+TOKEN_FILE="$CONFIG_DIR/token"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# The stack's canonical origin; ~/.config/tasks/config overrides (TASKS_URL=…).
+TASKS_URL="https://tasks.nmc.internal"
+# shellcheck source=/dev/null
+[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+TASKS_URL="${TASKS_URL%/}"
+
+token() { [ -f "$TOKEN_FILE" ] && tr -d '[:space:]' < "$TOKEN_FILE" || true; }
+
+# One API call: api METHOD PATH [JSON_BODY]. Body on stdout; curl's --fail
+# keeps refusals as nonzero exits (the envelope is lost, which is fine for a
+# companion this size — the CLI in the service repo is the forensic tool).
+api() {
+    local method="$1" path="$2" body="${3:-}"
+    local args=(-sS --fail -m 10 -X "$method" -H "Authorization: Bearer $(token)")
+    [ -n "$body" ] && args+=(-H "Content-Type: application/json" -d "$body")
+    curl "${args[@]}" "$TASKS_URL$path"
+}
+
+login() {
+    local device_config issuer client_id discovery device grant
+    device_config=$(curl -sS --fail "$TASKS_URL/auth/device-config")
+    issuer=$(jq -re .issuer <<<"$device_config")
+    client_id=$(jq -re .client_id <<<"$device_config")
+
+    discovery=$(curl -sS --fail "${issuer%/}/.well-known/openid-configuration")
+    local device_ep token_ep
+    device_ep=$(jq -re .device_authorization_endpoint <<<"$discovery")
+    token_ep=$(jq -re .token_endpoint <<<"$discovery")
+
+    grant=$(curl -sS --fail -X POST "$device_ep" \
+        -d "client_id=$client_id" -d "scope=openid profile tasks")
+    local user_code verify_url interval expires device_code
+    device_code=$(jq -re .device_code <<<"$grant")
+    user_code=$(jq -re .user_code <<<"$grant")
+    verify_url=$(jq -re '.verification_uri_complete // .verification_uri' <<<"$grant")
+    interval=$(jq -r '.interval // 5' <<<"$grant")
+    expires=$(jq -r '.expires_in // 600' <<<"$grant")
+
+    echo "Approve the request in your browser (code: $user_code)"
+    echo "  $verify_url"
+    setsid xdg-open "$verify_url" >/dev/null 2>&1 || true
+
+    local deadline=$((SECONDS + expires)) response error
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        sleep "$interval"
+        response=$(curl -sS -X POST "$token_ep" \
+            -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+            -d "device_code=$device_code" -d "client_id=$client_id")
+        if jq -e .access_token >/dev/null 2>&1 <<<"$response"; then
+            mkdir -p "$CONFIG_DIR"
+            (umask 077 && jq -rj .access_token <<<"$response" > "$TOKEN_FILE")
+            echo "Logged in; token written to $TOKEN_FILE"
+            return 0
+        fi
+        error=$(jq -r '.error // "unknown"' <<<"$response")
+        case "$error" in
+            authorization_pending) ;;
+            slow_down) interval=$((interval + 5)) ;;
+            *) echo "login refused: $error" >&2; return 1 ;;
+        esac
+    done
+    echo "the device code expired before approval" >&2
+    return 1
+}
+
+capture() {
+    local title doc
+    # Escape closes the prompt without a task; so does an empty line.
+    title=$(gum input --placeholder "New task…" --prompt "☑ " || true)
+    [ -z "$title" ] && exit 0
+    doc=$(jq -cn --arg title "$title" '{title: $title, status: "open"}')
+    if api POST /api/tasks "$doc" >/dev/null; then
+        notify-send -a Tasks "Task captured" "$title" 2>/dev/null || echo "captured: $title"
+    else
+        notify-send -u critical -a Tasks "Capture FAILED" "$title — run omarchy-tasks login?" \
+            2>/dev/null || echo "capture failed" >&2
+        # Leave the terminal open long enough to read the failure when run in
+        # a floating window that closes on exit.
+        sleep 3
+        exit 1
+    fi
+}
+
+count() {
+    [ -s "$TOKEN_FILE" ] || exit 3
+    local response
+    response=$(api GET "/api/tasks?view=today&today=$(date +%F)" 2>/dev/null) || exit 2
+    jq -re '.tasks | length' <<<"$response" 2>/dev/null || exit 2
+}
+
+today() {
+    api GET "/api/tasks?view=today&today=$(date +%F)" \
+        | jq -r '.tasks[] | "\(.seq)\t\(.due // "")\t\(.title)"'
+}
+
+case "${1:-}" in
+    login) login ;;
+    capture) capture ;;
+    count) count ;;
+    today) today ;;
+    open) exec xdg-open "$TASKS_URL" ;;
+    *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
