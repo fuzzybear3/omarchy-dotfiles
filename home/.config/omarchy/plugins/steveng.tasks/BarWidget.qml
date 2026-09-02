@@ -106,11 +106,14 @@ Ui.Panel {
     anchors.fill: parent
     bar: root.bar
     opacity: (root.loggedOut || !root.reachable) ? 0.45 : 1.0
-    //  is the nerd-font key (log in);  the list-check the count
+    //  is the nerd-font key (log in);  the list-check the count
     // rides beside, in the bar font — the KeyboardLayout text convention.
+    // Escapes, not literal glyphs: a literal PUA character has already been
+    // eaten once by an edit-tool round trip, leaving an empty string and an
+    // invisible widget that still reserved its slot.
     text: root.loggedOut
-      ? ""
-      : " " + (root.reachable ? root.dueCount : "–")
+      ? "\uf084"
+      : "\uf0ae " + (root.reachable ? root.dueCount : "–")
     tooltipText: root.loggedOut
       ? "Personal tasks — not logged in"
       : root.reachable
