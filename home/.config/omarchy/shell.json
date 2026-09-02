@@ -34,10 +34,13 @@
           "id": "omarchy.weather"
         },
         {
-          "id": "io.github.weedwhitesandwine.japanquake"
+          "id": "steveng.tasks"
         },
         {
-          "id": "salmun-nister.luna"
+          "id": "steveng.gitea"
+        },
+        {
+          "id": "io.github.weedwhitesandwine.japanquake"
         },
         {
           "id": "omarchy.system-update"
@@ -46,6 +49,13 @@
       "right": [
         {
           "id": "omarchy.tray"
+        },
+        {
+          "id": "harshith.system-monitor",
+          "barMode": "Adaptive"
+        },
+        {
+          "id": "crmne.hyprmoncfg"
         },
         {
           "id": "omarchy.tailscale"

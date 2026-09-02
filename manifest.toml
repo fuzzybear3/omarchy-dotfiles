@@ -44,6 +44,18 @@ path = ".config/omarchy/plugins/steveng.tasks"
 note = "Bar widget: due-today task count via `omarchy-tasks count`; click captures. Hidden until logged in and at zero"
 
 [[config]]
+path = ".local/bin/omarchy-gitea"
+note = "Gitea tracker: Actions status for the bar widget, failure/merge notifications. Self-contained curl+jq client of the shop Gitea"
+
+[[config]]
+path = ".config/gitea/config"
+note = "Gitea origin (GITEA_URL) and tracker overrides. The token is the gitea-mcp one at ~/.config/gitea-mcp/token, deliberately NOT managed"
+
+[[config]]
+path = ".config/omarchy/plugins/steveng.gitea"
+note = "Bar widget: Actions runs in flight + failing repos via `omarchy-gitea check`; click opens the single-repo tracker panel (jobs, steps, recent runs)"
+
+[[config]]
 path = ".config/omarchy/shell.json"
 note = "Bar layout: keyboard-layout widget moved ahead of clock/weather"
 

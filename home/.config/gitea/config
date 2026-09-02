@@ -1,0 +1,17 @@
+# omarchy-gitea configuration, sourced as shell. Defaults live in the script;
+# anything set here wins.
+
+# The shop Gitea's origin (mDNS name on the shop LAN).
+GITEA_URL="http://nmc-pc-457.local:3000"
+
+# Read token: reuses the gitea-mcp token on purpose — one credential to
+# revoke, and omarchy-gitea only ever GETs. Point this elsewhere to split them.
+#GITEA_TOKEN_FILE="$HOME/.config/gitea/token"
+
+# Explicit tracking list (space-separated owner/repo). Unset means every
+# unarchived repo the token can push to, rediscovered on each poll.
+#GITEA_REPOS="nmc/server-systems"
+
+# The monorepo. Listed first everywhere; the panel opens focused on its
+# current run unless another repo is in flight or failing.
+GITEA_PRIMARY="nmc/server-systems"

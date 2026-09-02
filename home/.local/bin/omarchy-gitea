@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# omarchy-gitea — tracker for the shop Gitea: Actions status and merges.
+# Self-contained on purpose: curl + jq against the HTTP API, the omarchy-tasks
+# pattern — the bar widget and the terminal share this one script, so they
+# cannot disagree about the server, the token, or the repo list.
+#
+#   omarchy-gitea check    one poll: summary JSON on stdout for the bar widget;
+#                          notifies NEW failures and merges (deduped in state)
+#   omarchy-gitea report   full JSON for the widget's panel: every repo's
+#                          latest run + in-flight count, recent merges. Pure
+#                          read — no state, no notifications
+#   omarchy-gitea run R    detail JSON for repo R's current run (the in-flight
+#                          one, else the badge run): jobs, steps, timings
+#   omarchy-gitea status   the report, readable, for a terminal
+#   omarchy-gitea open     the Gitea web UI
+#
+# Exit codes for `check`/`report`/`run` (the widget keys off them): 0 with the
+# JSON; 3 no token; 2 unreachable/refused.
+set -euo pipefail
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/gitea/config"
+STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-gitea/state.json"
+
+# Defaults; ~/.config/gitea/config overrides any of them.
+GITEA_URL="http://nmc-pc-457.local:3000"
+GITEA_TOKEN_FILE="$HOME/.config/gitea-mcp/token"
+GITEA_REPOS=""
+GITEA_PRIMARY=""
+# shellcheck source=/dev/null
+[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+GITEA_URL="${GITEA_URL%/}"
+
+token() { tr -d '[:space:]' < "$GITEA_TOKEN_FILE"; }
+
+# GET only — this tracker never writes to Gitea, which is also why reusing
+# the gitea-mcp token is acceptable despite its full scope. -4 because the
+# server's mDNS also advertises a link-local AAAA that curl tries first and
+# times out on (observed 2026-09-02; avahi's A record works every time).
+api() {
+    curl -4 -sS --fail -m 10 -H "Authorization: token $(token)" "$GITEA_URL/api/v1$1"
+}
+
+notify() { notify-send -u "$1" -a Gitea "$2" "$3" 2>/dev/null || true; }
+
+# Explicit GITEA_REPOS wins; otherwise every unarchived repo the token can
+# push to — an always-rule, so new repos are tracked without editing config.
+# GITEA_PRIMARY always sorts first (and is tracked even if not discovered).
+repo_list() {
+    local list
+    if [ -n "$GITEA_REPOS" ]; then
+        # shellcheck disable=SC2086  # word-splitting the list is the point
+        list=$(printf '%s\n' $GITEA_REPOS)
+    else
+        list=$(api "/user/repos?limit=50" \
+            | jq -r '.[] | select(.permissions.push and (.archived | not)) | .full_name')
+    fi
+    if [ -n "$GITEA_PRIMARY" ]; then
+        echo "$GITEA_PRIMARY"
+        grep -Fxv -- "$GITEA_PRIMARY" <<<"$list" || true
+    else
+        echo "$list"
+    fi
+}
+
+check() {
+    [ -s "$GITEA_TOKEN_FILE" ] || exit 3
+    local repos state new_state repo
+    repos=$(repo_list) || exit 2
+    state="{}"
+    [ -s "$STATE_FILE" ] && state=$(cat "$STATE_FILE")
+    new_state=$state
+
+    local running=0 failed=0 failed_repos=()
+    for repo in $repos; do
+        local runs pulls seen latest
+        runs=$(api "/repos/$repo/actions/runs?limit=10") || exit 2
+        pulls=$(api "/repos/$repo/pulls?state=closed&sort=recentupdate&limit=10") || exit 2
+        # A repo not yet in state seeds silently — no backlog storm on the
+        # first poll ever, nor when a new repo appears mid-life.
+        seen=$(jq --arg r "$repo" 'has($r)' <<<"$state")
+
+        running=$((running + $(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs")))
+
+        # Per-workflow latest completed run; the repo is red while ANY
+        # workflow's latest run failed. Newest-overall would let a PR's ci.yml
+        # success mask deploy.yml staying broken on main — the workflows of a
+        # repo interleave in this id-descending list.
+        latest=$(jq -c '[.workflow_runs[] | select(.status == "completed")]
+            | group_by(.path) | map(max_by(.id))
+            | map(select(.conclusion == "failure")) | max_by(.id) // empty' <<<"$runs")
+        if [ -n "$latest" ]; then
+            failed=$((failed + 1))
+            failed_repos+=("$repo")
+            local run_id prev_id
+            run_id=$(jq -r .id <<<"$latest")
+            prev_id=$(jq -r --arg r "$repo" '.[$r].failure_id // 0' <<<"$state")
+            if [ "$run_id" -gt "$prev_id" ]; then
+                [ "$seen" = true ] && notify critical "CI failed" \
+                    "$(jq -r --arg r "$repo" '"\($r) #\(.run_number) — \(.display_title)"' <<<"$latest")"
+                new_state=$(jq -c --arg r "$repo" --argjson id "$run_id" \
+                    '.[$r].failure_id = $id' <<<"$new_state")
+            fi
+        fi
+
+        # Merges: anything newer than the recorded high-water mark. An empty
+        # mark on a seen repo means it had no merges at seed time, so every
+        # merged PR that shows up now is genuinely new.
+        local prev_merged newest_merged
+        prev_merged=$(jq -r --arg r "$repo" '.[$r].merged_at // ""' <<<"$state")
+        newest_merged=$(jq -r '[.[] | select(.merged) | .merged_at] | max // ""' <<<"$pulls")
+        if [ "$seen" = true ]; then
+            while IFS=$'\t' read -r num title; do
+                notify normal "PR merged" "$repo #$num — $title"
+            done < <(jq -r --arg since "$prev_merged" \
+                '.[] | select(.merged and .merged_at > $since)
+                     | [(.number|tostring), .title] | @tsv' <<<"$pulls")
+        fi
+        if [ -n "$newest_merged" ] && [[ "$newest_merged" > "$prev_merged" ]]; then
+            new_state=$(jq -c --arg r "$repo" --arg m "$newest_merged" \
+                '.[$r].merged_at = $m' <<<"$new_state")
+        fi
+        [ "$seen" = true ] || new_state=$(jq -c --arg r "$repo" '.[$r] //= {}' <<<"$new_state")
+    done
+
+    mkdir -p "$(dirname "$STATE_FILE")"
+    printf '%s\n' "$new_state" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    jq -cn --argjson running "$running" --argjson failed "$failed" \
+        '{running: $running, failed: $failed, failedRepos: $ARGS.positional}' \
+        --args "${failed_repos[@]}"
+}
+
+report() {
+    [ -s "$GITEA_TOKEN_FILE" ] || exit 3
+    local repos repo runs pulls out_repos="[]" out_merges="[]"
+    repos=$(repo_list) || exit 2
+    for repo in $repos; do
+        runs=$(api "/repos/$repo/actions/runs?limit=10") || exit 2
+        pulls=$(api "/repos/$repo/pulls?state=closed&sort=recentupdate&limit=5") || exit 2
+        # `latest` is the repo's badge: the newest still-failing workflow when
+        # one exists (same per-workflow rule as check), else the newest run.
+        out_repos=$(jq -c --argjson runs "$runs" --arg r "$repo" '. + [$runs | {
+            repo: $r,
+            running: ([.workflow_runs[] | select(.status != "completed")] | length),
+            latest: ([.workflow_runs[] | select(.status == "completed")]
+                     | group_by(.path) | map(max_by(.id)) as $byWorkflow
+                     | (($byWorkflow | map(select(.conclusion == "failure")) | max_by(.id))
+                        // ($byWorkflow | max_by(.id)))
+                     | if . then {run_number, conclusion, branch: .head_branch,
+                                  workflow: (.path | split("@")[0]),
+                                  title: .display_title}
+                       else null end)}]' <<<"$out_repos")
+        out_merges=$(jq -c --argjson pulls "$pulls" --arg r "$repo" \
+            '. + [$pulls[] | select(.merged) | {repo: $r, number, title, merged_at}]' \
+            <<<"$out_merges")
+    done
+    jq -cn --arg url "$GITEA_URL" --arg primary "$GITEA_PRIMARY" \
+        --argjson repos "$out_repos" --argjson merges "$out_merges" \
+        '{url: $url, primary: $primary, repos: $repos,
+          merges: ($merges | sort_by(.merged_at) | reverse | .[:8])}'
+}
+
+# The panel's drill-down: one repo's "current" run — the newest in-flight run
+# when one exists (that's the one being watched), otherwise the badge run —
+# with its jobs and their steps, so progress reads in the panel instead of
+# the web UI's Actions tab.
+run_detail() {
+    [ -s "$GITEA_TOKEN_FILE" ] || exit 3
+    local repo="${1:?usage: omarchy-gitea run owner/repo}"
+    local runs current run_id jobs
+    runs=$(api "/repos/$repo/actions/runs?limit=10") || exit 2
+    current=$(jq -c '[.workflow_runs[]] as $all
+        | ([$all[] | select(.status != "completed")] | max_by(.id))
+          // ([$all[] | select(.status == "completed")]
+              | group_by(.path) | map(max_by(.id)) as $byWorkflow
+              | (($byWorkflow | map(select(.conclusion == "failure")) | max_by(.id))
+                 // ($byWorkflow | max_by(.id))))
+          // null
+        | if . then {id, run_number, status, conclusion, event,
+                     title: .display_title, branch: .head_branch,
+                     workflow: (.path | split("@")[0]),
+                     started_at, completed_at, html_url}
+          else null end' <<<"$runs")
+    if [ -z "$current" ] || [ "$current" = "null" ]; then
+        jq -cn --arg repo "$repo" '{repo: $repo, run: null, jobs: []}'
+        return 0
+    fi
+    run_id=$(jq -r .id <<<"$current")
+    jobs=$(api "/repos/$repo/actions/runs/$run_id/jobs") || exit 2
+    # `recent` rides along from the same runs fetch: the run history the
+    # single-repo view shows under the current run's detail.
+    jq -cn --arg repo "$repo" --argjson run "$current" --argjson jobs "$jobs" \
+        --argjson runs "$runs" \
+        '{repo: $repo, run: $run,
+          jobs: [$jobs.jobs[] | {name, status, conclusion, started_at, completed_at,
+                 steps: [.steps[] | {name, status, conclusion, started_at, completed_at}]}],
+          recent: [$runs.workflow_runs[] | select(.status == "completed")
+                   | {id, run_number, conclusion, started_at, completed_at,
+                      workflow: (.path | split("@")[0]), title: .display_title}][:6]}'
+}
+
+status() {
+    [ -s "$GITEA_TOKEN_FILE" ] || { echo "no token at $GITEA_TOKEN_FILE" >&2; exit 3; }
+    local repos repo runs line
+    repos=$(repo_list) || exit 2
+    for repo in $repos; do
+        runs=$(api "/repos/$repo/actions/runs?limit=10") || exit 2
+        # Same badge rule as report: the newest still-failing workflow wins.
+        line=$(jq -r '[.workflow_runs[] | select(.status == "completed")]
+            | group_by(.path) | map(max_by(.id)) as $byWorkflow
+            | (($byWorkflow | map(select(.conclusion == "failure")) | max_by(.id))
+               // ($byWorkflow | max_by(.id))) // empty
+            | "#\(.run_number)  \(.conclusion)  \(.path | split("@")[0])  \(.display_title)"' \
+            <<<"$runs")
+        printf '%-30s %s\n' "$repo" "${line:-no runs}"
+    done
+    echo
+    echo "Recent merges:"
+    for repo in $repos; do
+        api "/repos/$repo/pulls?state=closed&sort=recentupdate&limit=5" \
+            | jq -r --arg r "$repo" \
+                '.[] | select(.merged) | "  \(.merged_at[:10])  \($r) #\(.number)  \(.title)"'
+    done | sort -r | head -10
+    echo
+    echo "→ $GITEA_URL"
+}
+
+case "${1:-}" in
+    check) check ;;
+    report) report ;;
+    run) run_detail "${2:-}" ;;
+    status) status ;;
+    open) exec xdg-open "$GITEA_URL" ;;
+    *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

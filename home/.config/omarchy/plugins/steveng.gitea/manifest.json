@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "steveng.gitea",
+  "name": "Gitea tracker",
+  "version": "1.0.0",
+  "author": "Steven Guido",
+  "description": "Actions status and merge notifications from the shop Gitea; click for the tracker panel",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Gitea tracker",
+    "description": "Actions in flight and failing repos; quiet glyph when all green",
+    "category": "Productivity",
+    "allowMultiple": false
+  }
+}
