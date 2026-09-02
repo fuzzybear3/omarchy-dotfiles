@@ -40,7 +40,22 @@ api() {
     curl -4 -sS --fail -m 10 -H "Authorization: token $(token)" "$GITEA_URL/api/v1$1"
 }
 
-notify() { notify-send -u "$1" -a Gitea "$2" "$3" 2>/dev/null || true; }
+# notify URGENCY TITLE BODY [URL]. With a URL the toast opens it on click:
+# the shell's daemon invokes the libnotify "default" action, and notify-send
+# -A waits for that verdict — so the wait rides a detached subshell, with
+# stdout dropped (the widget collects check's stdout) and fd 9 closed (the
+# check lock must not be held hostage by an unclicked critical toast).
+notify() {
+    local urgency="$1" title="$2" body="$3" url="${4:-}"
+    if [ -z "$url" ]; then
+        notify-send -u "$urgency" -a Gitea "$title" "$body" 2>/dev/null || true
+        return 0
+    fi
+    setsid bash -c '
+        action=$(notify-send -u "$1" -a Gitea -A default=Open "$2" "$3" 2>/dev/null) || exit 0
+        [ "$action" = "default" ] && exec xdg-open "$4"
+    ' _ "$urgency" "$title" "$body" "$url" >/dev/null 2>&1 9>&- &
+}
 
 # Explicit GITEA_REPOS wins; otherwise every unarchived repo the token can
 # push to — an always-rule, so new repos are tracked without editing config.
@@ -103,7 +118,8 @@ check() {
             prev_id=$(jq -r --arg r "$repo" '.[$r].failure_id // 0' <<<"$state")
             if [ "$run_id" -gt "$prev_id" ]; then
                 [ "$seen" = true ] && notify critical "CI failed" \
-                    "$(jq -r --arg r "$repo" '"\($r) #\(.run_number) — \(.display_title)"' <<<"$latest")"
+                    "$(jq -r --arg r "$repo" '"\($r) #\(.run_number) — \(.display_title)"' <<<"$latest")" \
+                    "$GITEA_URL/$repo/actions/runs/$run_id"
                 new_state=$(jq -c --arg r "$repo" --argjson id "$run_id" \
                     '.[$r].failure_id = $id' <<<"$new_state")
             fi
@@ -117,7 +133,7 @@ check() {
         newest_merged=$(jq -r '[.[] | select(.merged) | .merged_at] | max // ""' <<<"$pulls")
         if [ "$seen" = true ]; then
             while IFS=$'\t' read -r num title; do
-                notify normal "PR merged" "$repo #$num — $title"
+                notify normal "PR merged" "$repo #$num — $title" "$GITEA_URL/$repo/pulls/$num"
             done < <(jq -r --arg since "$prev_merged" \
                 '.[] | select(.merged and .merged_at > $since)
                      | [(.number|tostring), .title] | @tsv' <<<"$pulls")
@@ -198,6 +214,7 @@ run_detail() {
         --argjson runs "$runs" \
         '{repo: $repo, run: $run,
           jobs: [$jobs.jobs[] | {name, status, conclusion, started_at, completed_at,
+                 web_path: (.html_url // "" | sub("^[a-z]+://[^/]+"; "")),
                  steps: [.steps[] | {name, status, conclusion, started_at, completed_at}]}],
           recent: [$runs.workflow_runs[] | select(.status == "completed")
                    | {id, run_number, conclusion, started_at, completed_at,

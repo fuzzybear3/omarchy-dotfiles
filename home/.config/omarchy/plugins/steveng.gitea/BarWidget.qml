@@ -641,6 +641,23 @@ Ui.Panel {
     borderSpec: Border.controlSpec("normal", root.foreground, root.accent)
     implicitHeight: cardColumn.implicitHeight + Style.space(18)
 
+    // The card is the run — clicking anywhere on it opens the run's page.
+    // Job rows and the header's link button sit on top and win their areas.
+    MouseArea {
+      id: cardMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: root.detailRun ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: if (root.detailRun) root.openWeb("/" + root.detail.repo + "/actions/runs/" + root.detailRun.id)
+    }
+
+    Rectangle {
+      anchors.fill: parent
+      radius: card.radius
+      color: root.trackColor
+      visible: cardMouse.containsMouse && root.detailRun !== null
+    }
+
     Column {
       id: cardColumn
       anchors.left: parent.left
@@ -735,6 +752,12 @@ Ui.Panel {
             implicitHeight: Style.space(18)
 
             Rectangle {
+              anchors.fill: parent
+              radius: Style.cornerRadius
+              color: jobMouse.containsMouse ? root.trackColor : "transparent"
+            }
+
+            Rectangle {
               width: Style.space(6)
               height: width
               radius: width / 2
@@ -764,6 +787,17 @@ Ui.Panel {
               font.pixelSize: Style.font.caption
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
+            }
+
+            // Straight to this job's page (the API's own html_url path).
+            MouseArea {
+              id: jobMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (jobItem.modelData.web_path) root.openWeb(jobItem.modelData.web_path)
+              }
             }
           }
 
