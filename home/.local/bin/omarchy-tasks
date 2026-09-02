@@ -46,6 +46,21 @@ login_fail() {
 
 login() {
     local device_config issuer client_id discovery device grant
+    # One login at a time across the whole desktop: the bar runs one widget
+    # instance per monitor (the gitea tracker's flock precedent, its `check`),
+    # so two clicks can start two device flows — two browser tabs, doubled
+    # notifications, and the second token clobbering the first. Unlike a quick
+    # check cycle there is nothing to wait out here — a login runs for however
+    # long the browser approval takes — so the loser doesn't queue: it points
+    # at the flow already underway and leaves.
+    mkdir -p "$CONFIG_DIR"
+    exec 9>>"$TOKEN_FILE.lock"
+    if ! flock -n 9; then
+        echo "a login is already in progress" >&2
+        notify-send -a Tasks "Login already in progress" \
+            "Approve the request in the browser tab that is already open" 2>/dev/null || true
+        exit 1
+    fi
     device_config=$(curl -sS --fail -m 10 "$TASKS_URL/auth/device-config") \
         || login_fail "could not reach $TASKS_URL — is the service deployed, and are you on the tailnet?"
     issuer=$(jq -re .issuer <<<"$device_config") \
