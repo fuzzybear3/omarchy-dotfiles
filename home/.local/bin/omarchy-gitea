@@ -117,7 +117,10 @@ check() {
             run_id=$(jq -r .id <<<"$latest")
             prev_id=$(jq -r --arg r "$repo" '.[$r].failure_id // 0' <<<"$state")
             if [ "$run_id" -gt "$prev_id" ]; then
-                [ "$seen" = true ] && notify critical "CI failed" \
+                # Titled by the workflow that broke — "deploy.yml failed" is
+                # CD news, "ci.yml failed" is a PR check; one word answers it.
+                [ "$seen" = true ] && notify critical \
+                    "$(jq -r '"\(.path | split("@")[0]) failed"' <<<"$latest")" \
                     "$(jq -r --arg r "$repo" '"\($r) #\(.run_number) — \(.display_title)"' <<<"$latest")" \
                     "$GITEA_URL/$repo/actions/runs/$run_id"
                 new_state=$(jq -c --arg r "$repo" --argjson id "$run_id" \
