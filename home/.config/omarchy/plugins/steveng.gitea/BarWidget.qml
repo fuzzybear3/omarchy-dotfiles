@@ -1,29 +1,22 @@
 import QtQuick
 import QtQuick.Controls
-import Quickshell.Io
 import qs.Commons
 import qs.Ui as Ui
 
-// The shop Gitea's bar presence: Actions runs in flight, and repos whose
-// latest completed run failed, polled through `omarchy-gitea check`. The
-// script raises the failure/merge notifications as a side effect of the same
-// poll, so the bar being alive is what keeps the tracker tracking.
+// The per-monitor half of steveng.gitea: a thin view over the plugin's
+// service instance (Service.qml, mounted once by the shell regardless of
+// monitor count) reached through bar.shell.serviceFor. All polling, timers,
+// and state live in the service; this file only renders and forwards input,
+// so N monitors mean N faces of the same tracker, never N trackers.
 //
-// The bar face stays quiet: all green and nothing running → a bare git-branch
-// glyph (the panel must stay reachable for watching runs and merges, so the
-// widget never hides); a failure shows an x-circle with the repo count, runs
-// in flight a refresh glyph with theirs; no token or unreachable dims the
-// glyph. Clicking opens an
-// anchored panel (the system-monitor's design dialect — hero, stat tiles,
-// sectioned rows) fed by `omarchy-gitea report`, fetched fresh on each open.
-//
-// The panel shows ONE repo at a time — a pager (‹ ›, or ← → on the
-// keyboard) switches — which buys the space for the whole current run
-// (`omarchy-gitea run R`): every job with its full step list and per-step
-// durations ticking live, plus the repo's recent-runs history. The in-flight
-// (else failing, else primary) repo is focused on open, and the detail
-// refetches every 10s while the run is going — the point is to watch a run
-// without opening the web UI's Actions tab.
+// The bar face stays quiet: all green and nothing running → a bare
+// git-branch glyph (the panel must stay reachable for watching runs and
+// merges, so the widget never hides); a failure shows an x-circle with the
+// repo count, runs in flight a refresh glyph with theirs; no token or
+// unreachable dims the glyph. Clicking opens an anchored panel (the
+// system-monitor's design dialect) showing ONE repo at a time — pager
+// arrows or ← → switch — with the current run's jobs, full step lists,
+// live-ticking durations, and the repo's recent runs.
 // (qs.Ui is imported under a namespace because this file is itself named
 // BarWidget.qml — the japanquake plugin's convention.)
 Ui.Panel {
@@ -31,28 +24,23 @@ Ui.Panel {
   moduleName: "steveng.gitea"
   ipcTarget: "steveng.gitea"
 
-  // Bar-face state, from `check`.
-  property int running: 0
-  property int failed: 0
-  property var failedRepos: []
-  property bool hasToken: true
-  property bool reachable: true
+  readonly property var svc: bar && bar.shell ? bar.shell.serviceFor("steveng.gitea") : null
 
-  // Panel state, from `report`. null until the first open.
-  property var report: null
-  property bool loading: false
-
-  // Drill-down state, from `run`. detailRepo names the expanded repo row.
-  property var detail: null
-  property string detailRepo: ""
-  property bool detailLoading: false
-  property bool autoExpanded: false
-  // Ticked once a second while a watched run is in flight, so elapsed times
-  // count up without refetching.
-  property real nowMs: Date.now()
-
-  readonly property var detailRun: detail && detail.run ? detail.run : null
-  readonly property bool detailInFlight: detailRun !== null && detailRun.status !== "completed"
+  // Null-safe proxies: the service mounts at shell startup, but bindings
+  // evaluate before it lands, and a broken mount must degrade to a dimmed
+  // glyph rather than a wall of TypeErrors.
+  readonly property int running: svc ? svc.running : 0
+  readonly property int failed: svc ? svc.failed : 0
+  readonly property var failedRepos: svc ? svc.failedRepos : []
+  readonly property bool hasToken: svc ? svc.hasToken : true
+  readonly property bool reachable: svc ? svc.reachable : false
+  readonly property var report: svc ? svc.report : null
+  readonly property bool loading: svc ? svc.loading : false
+  readonly property var detail: svc ? svc.detail : null
+  readonly property string detailRepo: svc ? svc.detailRepo : ""
+  readonly property bool detailLoading: svc ? svc.detailLoading : false
+  readonly property var detailRun: svc ? svc.detailRun : null
+  readonly property bool detailInFlight: svc ? svc.detailInFlight : false
 
   // The system-monitor panel's color recipe, so side-by-side panels match.
   readonly property color foreground: bar ? bar.barForeground : Color.foreground
@@ -69,42 +57,22 @@ Ui.Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  function refresh() {
-    if (!checkProc.running) checkProc.running = true
-  }
-
-  function fetchReport() {
-    loading = true
-    if (!reportProc.running) reportProc.running = true
-  }
-
-  function fetchDetail() {
-    if (detailRepo === "") return
-    detailLoading = true
-    if (!runProc.running) runProc.running = true
-  }
-
-  function repoIndex() {
-    if (!report) return -1
-    for (var i = 0; i < report.repos.length; i++)
-      if (report.repos[i].repo === detailRepo) return i
-    return -1
-  }
-
-  function currentRepoEntry() {
-    var i = repoIndex()
-    return i >= 0 ? report.repos[i] : null
-  }
-
-  function switchRepo(delta) {
-    if (!report || report.repos.length === 0) return
-    var i = repoIndex()
-    i = i < 0 ? 0 : (i + delta + report.repos.length) % report.repos.length
-    if (report.repos[i].repo === detailRepo) return
-    detailRepo = report.repos[i].repo
-    detail = null
-    fetchDetail()
-  }
+  // Forwarders to the service; data/format helpers live there so every
+  // monitor's face agrees, color helpers stay here with the palette.
+  function fetchReport() { if (svc) svc.fetchReport() }
+  function fetchDetail() { if (svc) svc.fetchDetail() }
+  function switchRepo(delta) { if (svc) svc.switchRepo(delta) }
+  function repoIndex() { return svc ? svc.repoIndex() : -1 }
+  function currentRepoEntry() { return svc ? svc.currentRepoEntry() : null }
+  function repoSide(e) { return svc ? svc.repoSide(e) : "" }
+  function relTime(iso) { return svc ? svc.relTime(iso) : "" }
+  function repoBase(full) { return svc ? svc.repoBase(full) : String(full) }
+  function durBetween(a, b) { return svc ? svc.durBetween(a, b) : "" }
+  function jobSide(job) { return svc ? svc.jobSide(job) : "" }
+  function stepGlyph(step) { return svc ? svc.stepGlyph(step) : "" }
+  function runMetaText() { return svc ? svc.runMetaText() : "" }
+  function runStateText() { return svc ? svc.runStateText() : "" }
+  function heroMeta() { return svc ? svc.heroMeta() : "Service not mounted" }
 
   function openWeb(path) {
     var base = report && report.url ? report.url : ""
@@ -122,79 +90,11 @@ Ui.Panel {
     return muted
   }
 
-  function repoSide(repoEntry) {
-    if (repoEntry.running > 0) return repoEntry.running + " in flight"
-    if (!repoEntry.latest) return "no runs"
-    return "#" + repoEntry.latest.run_number + "  " + repoEntry.latest.workflow
-  }
-
-  function relTime(iso) {
-    if (!iso) return "—"
-    var m = Math.floor((Date.now() - Date.parse(iso)) / 60000)
-    if (!isFinite(m) || m < 0) return "—"
-    if (m < 1) return "now"
-    if (m < 60) return m + "m ago"
-    var h = Math.floor(m / 60)
-    if (h < 24) return h + "h ago"
-    return Math.floor(h / 24) + "d ago"
-  }
-
-  function repoBase(full) {
-    var i = String(full).indexOf("/")
-    return i >= 0 ? String(full).slice(i + 1) : String(full)
-  }
-
-  // Gitea's zero times come back as the epoch (and the API has been seen
-  // returning year-1 too); both mean "hasn't happened yet".
-  function isZeroTime(iso) {
-    return !iso || String(iso).indexOf("1970-") === 0 || String(iso).indexOf("0001-") === 0
-  }
-
-  function fmtDur(s) {
-    if (!isFinite(s) || s < 0) return ""
-    if (s < 60) return s + "s"
-    var m = Math.floor(s / 60)
-    s = s % 60
-    if (m < 60) return m + "m" + (s < 10 ? "0" : "") + s + "s"
-    var h = Math.floor(m / 60)
-    return h + "h" + ((m % 60) < 10 ? "0" : "") + (m % 60) + "m"
-  }
-
-  // Duration between two timestamps; an unset end means "still going", timed
-  // against the ticking clock.
-  function durBetween(startIso, endIso) {
-    if (isZeroTime(startIso)) return ""
-    var end = isZeroTime(endIso) ? nowMs : Date.parse(endIso)
-    return fmtDur(Math.max(0, Math.round((end - Date.parse(startIso)) / 1000)))
-  }
-
   function jobDotColor(job) {
     if (job.conclusion === "failure") return urgent
     if (job.conclusion === "success") return accent
     if (job.status !== "completed") return warningColor
     return muted
-  }
-
-  function jobStepsDone(job) {
-    var n = 0
-    for (var i = 0; i < job.steps.length; i++)
-      if (job.steps[i].status === "completed") n++
-    return n
-  }
-
-  function jobSide(job) {
-    var dur = durBetween(job.started_at, job.completed_at)
-    // A queued job reports no steps yet; "0/0" would just be noise.
-    if (job.steps.length === 0) return dur !== "" ? dur : "queued"
-    return jobStepsDone(job) + "/" + job.steps.length + (dur !== "" ? " · " + dur : " · queued")
-  }
-
-  function stepGlyph(step) {
-    if (step.conclusion === "failure") return "✗"
-    if (step.conclusion === "success") return "✓"
-    if (step.conclusion === "skipped" || step.conclusion === "cancelled") return "○"
-    if (step.status === "in_progress") return "→"
-    return "·"
   }
 
   function stepColor(step) {
@@ -204,166 +104,15 @@ Ui.Panel {
     return muted
   }
 
-  function runMetaText() {
-    if (!detailRun) return ""
-    // A PR run's head_branch comes back null — skip what isn't there.
-    var parts = ["#" + detailRun.run_number, detailRun.workflow]
-    if (detailRun.branch) parts.push(detailRun.branch)
-    if (detailRun.event) parts.push(detailRun.event)
-    return parts.join(" · ")
-  }
-
-  function runStateText() {
-    if (!detailRun) return ""
-    if (detailRun.status !== "completed") {
-      var dur = durBetween(detailRun.started_at, null)
-      return dur !== "" ? dur : "queued"
-    }
-    return detailRun.conclusion + " · " + durBetween(detailRun.started_at, detailRun.completed_at)
-  }
-
-  function heroMeta() {
-    if (!hasToken) return "No token — expected at ~/.config/gitea-mcp/token"
-    if (!reachable) return "Unreachable — last known state"
-    var parts = []
-    if (report) parts.push(report.repos.length + " repos")
-    parts.push(failed > 0 ? failed + " failing" : "all green")
-    if (running > 0) parts.push(running + " in flight")
-    if (loading) parts.push("refreshing…")
-    return parts.join(" · ")
-  }
-
   onOpenedChanged: {
-    if (opened) {
-      nowMs = Date.now()
-      // Each open starts with a fresh focus pick (made when the report
-      // lands); the previous selection keeps rendering in the meantime.
-      autoExpanded = false
-      if (detailRepo !== "") fetchDetail()
-      fetchReport()
-      refresh()
-    }
+    if (!svc) return
+    if (opened) svc.panelOpened()
+    else svc.panelClosed()
   }
 
-  Process {
-    id: checkProc
-    command: ["omarchy-gitea", "check"]
-    stdout: StdioCollector { id: checkOut }
-    onExited: function(exitCode) {
-      if (exitCode === 0) {
-        try {
-          const s = JSON.parse(checkOut.text)
-          root.running = s.running
-          root.failed = s.failed
-          root.failedRepos = s.failedRepos
-          root.hasToken = true
-          root.reachable = true
-        } catch (e) {
-          root.reachable = false
-        }
-      } else if (exitCode === 3) {
-        root.hasToken = false
-      } else {
-        // Token exists but the server is unreachable (off the shop LAN, or
-        // Gitea is down): keep the last counts, dimmed.
-        root.reachable = false
-      }
-    }
-  }
-
-  Process {
-    id: reportProc
-    command: ["omarchy-gitea", "report"]
-    stdout: StdioCollector { id: reportOut }
-    onExited: function(exitCode) {
-      root.loading = false
-      if (exitCode === 0) {
-        try {
-          root.report = JSON.parse(reportOut.text)
-          root.reachable = true
-        } catch (e) {
-          root.reachable = false
-          return
-        }
-        if (root.opened && !root.autoExpanded) {
-          root.autoExpanded = true
-          var rs = root.report.repos
-          var pick = ""
-          for (var i = 0; i < rs.length && pick === ""; i++)
-            if (rs[i].running > 0) pick = rs[i].repo
-          for (i = 0; i < rs.length && pick === ""; i++)
-            if (rs[i].latest && rs[i].latest.conclusion === "failure") pick = rs[i].repo
-          // Quiet everywhere: focus the configured primary (the monorepo),
-          // else whatever sorts first.
-          if (pick === "" && root.report.primary !== "")
-            for (i = 0; i < rs.length && pick === ""; i++)
-              if (rs[i].repo === root.report.primary) pick = rs[i].repo
-          if (pick === "" && rs.length > 0) pick = rs[0].repo
-          if (pick !== "" && pick !== root.detailRepo) {
-            root.detailRepo = pick
-            root.detail = null
-          }
-          root.fetchDetail()
-        }
-      } else if (exitCode === 3) {
-        root.hasToken = false
-      } else {
-        root.reachable = false
-      }
-    }
-  }
-
-  Process {
-    id: runProc
-    command: ["omarchy-gitea", "run", root.detailRepo]
-    stdout: StdioCollector { id: runOut }
-    onExited: function(exitCode) {
-      root.detailLoading = false
-      if (exitCode !== 0) return
-      try {
-        const d = JSON.parse(runOut.text)
-        if (d.repo === root.detailRepo) root.detail = d
-        // The expansion switched repos while this fetch ran; go again.
-        else if (root.detailRepo !== "") root.fetchDetail()
-      } catch (e) {}
-    }
-  }
-
-  Timer {
-    interval: 60000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
-  }
-
-  // Runs seen in flight usually finish within a minute or two; while any are
-  // showing, poll faster so the glyph doesn't outlive the run.
-  Timer {
-    interval: 15000
-    running: root.running > 0 && root.reachable
-    repeat: true
-    onTriggered: root.refresh()
-  }
-
-  // The watched run's clock: tick elapsed locally every second…
-  Timer {
-    interval: 1000
-    running: root.opened && root.detailInFlight
-    repeat: true
-    onTriggered: root.nowMs = Date.now()
-  }
-
-  // …and refetch its jobs and steps every ten.
-  Timer {
-    interval: 10000
-    running: root.opened && root.detailInFlight
-    repeat: true
-    onTriggered: {
-      root.fetchDetail()
-      root.refresh()
-    }
-  }
+  // A widget destroyed with its panel open (monitor unplugged) must not
+  // strand the service's open-panel count.
+  Component.onDestruction: if (opened && svc) svc.panelClosed()
 
   Ui.WidgetButton {
     id: button
@@ -373,9 +122,9 @@ Ui.Panel {
     active: root.failed > 0
     activeColor: root.urgent
     // \uf057 x-circle (failed repos), \uf021 refresh arrows (in flight),
-    // \uf418 git branch (token and reachability states). Escapes, not literal
-    // glyphs: a literal PUA character has already been eaten once by an
-    // edit-tool round trip.
+    // \uf418 git branch (quiet, token, and reachability states). Escapes,
+    // not literal glyphs: a literal PUA character has already been eaten
+    // once by an edit-tool round trip.
     text: {
       if (!root.hasToken) return "\uf418"
       if (!root.reachable) return "\uf418 –"
@@ -689,6 +438,7 @@ Ui.Panel {
             width: parent.width
             visible: root.report === null
             text: root.loading ? "Fetching from Gitea…"
+              : !root.svc ? "Tracker service not mounted"
               : root.hasToken ? "Gitea is unreachable" : "No token"
             color: root.muted
             font.family: root.fontFamily
@@ -821,21 +571,17 @@ Ui.Panel {
     id: row
     property color dotColor: root.muted
     property bool showDot: true
-    property bool expanded: false
     property string mainText: ""
     property string sideText: ""
     property string tipText: ""
     property string link: ""
 
-    signal activated()
-
     width: parent ? parent.width : 0
     height: Style.space(24)
     radius: Style.cornerRadius
-    color: (expanded || rowMouse.containsMouse) ? root.trackColor : "transparent"
+    color: rowMouse.containsMouse ? root.trackColor : "transparent"
 
     Rectangle {
-      id: dot
       visible: row.showDot
       width: Style.space(6)
       height: width
@@ -875,10 +621,7 @@ Ui.Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: {
-        if (row.link !== "") root.openWeb(row.link)
-        else row.activated()
-      }
+      onClicked: if (row.link !== "") root.openWeb(row.link)
     }
 
     Ui.PanelToolTip {
@@ -888,8 +631,9 @@ Ui.Panel {
     }
   }
 
-  // The expanded run: title + link, meta and state, then a row per job with
-  // step progress, and the step that matters (executing or failed) beneath.
+  // The focused run: title + link, meta and state, then a row per job with
+  // step progress and the full step list beneath — the executing step's
+  // duration ticks with the service's shared clock.
   component DetailCard: Ui.BorderSurface {
     id: card
     radius: Style.cornerRadius
@@ -1007,13 +751,13 @@ Ui.Panel {
               elide: Text.ElideRight
               anchors.left: parent.left
               anchors.leftMargin: Style.space(12)
-              anchors.right: jobSide.left
+              anchors.right: jobSideLabel.left
               anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
             }
 
             Text {
-              id: jobSide
+              id: jobSideLabel
               text: root.jobSide(jobItem.modelData)
               color: root.muted
               font.family: root.fontFamily
@@ -1023,8 +767,7 @@ Ui.Panel {
             }
           }
 
-          // The full step list — the single-repo view's reason to exist. The
-          // executing step's duration ticks with the shared clock.
+          // The full step list — the single-repo view's reason to exist.
           Repeater {
             model: jobItem.modelData.steps
 

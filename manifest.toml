@@ -53,7 +53,7 @@ note = "Gitea origin (GITEA_URL) and tracker overrides. The token is the gitea-m
 
 [[config]]
 path = ".config/omarchy/plugins/steveng.gitea"
-note = "Bar widget: Actions runs in flight + failing repos via `omarchy-gitea check`; click opens the single-repo tracker panel (jobs, steps, recent runs)"
+note = "Gitea tracker plugin: Service.qml polls once per shell (kind service, the media plugin's shape); per-monitor BarWidget faces + single-repo panel (jobs, steps, recent runs)"
 
 [[config]]
 path = ".config/omarchy/shell.json"
