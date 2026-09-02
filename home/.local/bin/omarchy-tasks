@@ -70,6 +70,10 @@ login() {
             mkdir -p "$CONFIG_DIR"
             (umask 077 && jq -rj .access_token <<<"$response" > "$TOKEN_FILE")
             echo "Logged in; token written to $TOKEN_FILE"
+            notify-send -a Tasks "Logged in" "Personal tasks is connected" 2>/dev/null || true
+            # Readable for a beat when this ran in a floating terminal that
+            # closes on exit (the widget's login button).
+            sleep 2
             return 0
         fi
         error=$(jq -r '.error // "unknown"' <<<"$response")
