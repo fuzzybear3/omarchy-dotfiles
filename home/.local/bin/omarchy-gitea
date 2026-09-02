@@ -65,6 +65,13 @@ repo_list() {
 check() {
     [ -s "$GITEA_TOKEN_FILE" ] || exit 3
     local repos state new_state repo
+    # The bar runs one widget instance per monitor, so two checks can land at
+    # the same instant — both diffing the same old state and notifying twice.
+    # Serialize the whole read→notify→write cycle: the loser of the race
+    # reads the state the winner just wrote and stays silent.
+    mkdir -p "$(dirname "$STATE_FILE")"
+    exec 9>>"$STATE_FILE.lock"
+    flock -w 30 9 || exit 2
     repos=$(repo_list) || exit 2
     state="{}"
     [ -s "$STATE_FILE" ] && state=$(cat "$STATE_FILE")
@@ -122,7 +129,6 @@ check() {
         [ "$seen" = true ] || new_state=$(jq -c --arg r "$repo" '.[$r] //= {}' <<<"$new_state")
     done
 
-    mkdir -p "$(dirname "$STATE_FILE")"
     printf '%s\n' "$new_state" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
     jq -cn --argjson running "$running" --argjson failed "$failed" \
         '{running: $running, failed: $failed, failedRepos: $ARGS.positional}' \
