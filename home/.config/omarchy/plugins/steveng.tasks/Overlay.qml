@@ -184,11 +184,20 @@ Item {
   }
 
   property string flashText: ""
-  function flash(text) {
+  function flash(text, ms) {
     root.flashText = text
+    flashTimer.interval = ms === undefined ? 2500 : ms
     flashTimer.restart()
   }
   Timer { id: flashTimer; interval: 2500; onTriggered: root.flashText = "" }
+
+  // A refused write, in the server's words, lands in the footer.
+  Connections {
+    target: root.service
+    function onLastErrorChanged() {
+      if (root.service && root.service.lastError !== "") root.flash(root.service.lastError, 6000)
+    }
+  }
 
   function hintText() {
     if (root.flashText !== "") return root.flashText
@@ -405,7 +414,10 @@ Item {
                       text: (folderRow.index === 0 ? "\uf0ae  " : "\uf07b  ") + folderRow.modelData.label
                       color: folderRow.lit || (folderRow.isSelected && root.focusColumn === "folders")
                         ? root.selectedText : root.foreground
-                      opacity: folderRow.modelData.pending ? 0.6 : 1.0
+                      // A pending folder reads exactly like a real one — a
+                      // dimmed row looked disabled, and it is the opposite:
+                      // it is the row waiting for a drop.
+                      opacity: 1.0
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.title
                       elide: Text.ElideRight
@@ -420,7 +432,8 @@ Item {
                       id: folderCount
                       textFormat: Text.PlainText
                       text: folderRow.modelData.pending ? "new" : String(folderRow.modelData.tasks.length)
-                      color: folderRow.lit || (folderRow.isSelected && root.focusColumn === "folders")
+                      color: folderRow.modelData.pending ? root.accent
+                        : folderRow.lit || (folderRow.isSelected && root.focusColumn === "folders")
                         ? root.selectedText : root.muted
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
@@ -500,7 +513,7 @@ Item {
                     font.pixelSize: Style.font.body
                     clip: true
                     onAccepted: {
-                      var name = text.trim().replace(/\s+/g, "-")
+                      var name = root.service ? root.service.normalizeFolder(text) : text.trim()
                       text = ""
                       root.folderInputOpen = false
                       // Stay where the tasks are: switching into the new,
@@ -518,7 +531,7 @@ Item {
                     Text {
                       visible: folderInput.text === ""
                       textFormat: Text.PlainText
-                      text: "folder name…"
+                      text: "folder name (a-z, 0-9, -)…"
                       color: root.muted
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body

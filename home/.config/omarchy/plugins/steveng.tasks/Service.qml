@@ -47,6 +47,10 @@ Item {
   // the server never sees an empty folder, by design).
   property var extraFolders: []
 
+  // The last refused write, as the server explained it ("Move refused: tag
+  // "PCB" is invalid: …"). The board flashes it; the bar face ignores it.
+  property string lastError: ""
+
   // One line at mount: seeing it once in the journal — with two monitors —
   // is the proof the service pattern took.
   Component.onCompleted: console.log("steveng.tasks: service mounted (single instance)")
@@ -95,14 +99,24 @@ Item {
     title = String(title).trim()
     if (title === "" || addProc.running) return
     addTitle = title
-    addTag = tag === undefined ? "" : String(tag).trim()
+    addTag = normalizeFolder(tag)
     addProc.running = true
+  }
+
+  // The server's tag rule (apps/tasks model.rs, valid_tag): lowercase
+  // [a-z0-9-], first char alphanumeric, at most 32. It normalizes nothing
+  // by design — "PCB" is refused, not lowercased — so the client does, in
+  // this one place: every folder name, from any surface, passes through.
+  function normalizeFolder(name) {
+    var n = String(name === undefined || name === null ? "" : name).trim().toLowerCase()
+    n = n.replace(/[\s_]+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/^-+/, "").replace(/-+$/, "")
+    return n.slice(0, 32)
   }
 
   // Refile under the version the face displayed; "" or "-" means the stack.
   function moveTask(seq, version, folder) {
     if (moveProc.running) return
-    var f = folder === undefined || folder === null ? "" : String(folder).trim()
+    var f = folder === undefined || folder === null || String(folder).trim() === "-" ? "" : normalizeFolder(folder)
     moveSeq = seq
     moveVersion = version
     moveFolder = f === "" ? "-" : f
@@ -110,8 +124,8 @@ Item {
   }
 
   function ensureFolder(name) {
-    name = String(name).trim()
-    if (name === "" || name === "-") return
+    name = normalizeFolder(name)
+    if (name === "") return
     if (extraFolders.indexOf(name) !== -1) return
     var next = extraFolders.slice()
     next.push(name)
@@ -214,10 +228,19 @@ Item {
     command: ["omarchy-tasks", "login"]
   }
 
+  function reportRefusal(what, text) {
+    var msg = what + " refused: " + (String(text).trim() || "no reason given")
+    console.warn("steveng.tasks: " + msg)
+    lastError = ""
+    lastError = msg
+  }
+
   Process {
     id: doneProc
     command: ["omarchy-tasks", "done", String(service.doneSeq), String(service.doneVersion)]
-    onExited: function() {
+    stderr: StdioCollector { id: doneErr }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) service.reportRefusal("Done", doneErr.text)
       service.fetchPanel()
       service.refresh()
     }
@@ -228,7 +251,9 @@ Item {
     command: service.addTag === ""
       ? ["omarchy-tasks", "add", service.addTitle]
       : ["omarchy-tasks", "add", "-t", service.addTag, service.addTitle]
-    onExited: function() {
+    stderr: StdioCollector { id: addErr }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) service.reportRefusal("Add", addErr.text)
       service.fetchPanel()
       service.refresh()
     }
@@ -237,7 +262,9 @@ Item {
   Process {
     id: moveProc
     command: ["omarchy-tasks", "move", String(service.moveSeq), String(service.moveVersion), service.moveFolder]
-    onExited: function() {
+    stderr: StdioCollector { id: moveErr }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) service.reportRefusal("Move", moveErr.text)
       service.fetchPanel()
       service.refresh()
     }

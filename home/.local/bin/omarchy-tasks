@@ -30,14 +30,26 @@ TASKS_URL="${TASKS_URL%/}"
 
 token() { [ -f "$TOKEN_FILE" ] && tr -d '[:space:]' < "$TOKEN_FILE" || true; }
 
-# One API call: api METHOD PATH [JSON_BODY]. Body on stdout; curl's --fail
-# keeps refusals as nonzero exits (the envelope is lost, which is fine for a
-# companion this size — the CLI in the service repo is the forensic tool).
+# One API call: api METHOD PATH [JSON_BODY]. Body on stdout; a refusal is a
+# nonzero exit with the error envelope still on stdout (--fail-with-body),
+# so `write` below can say why.
 api() {
     local method="$1" path="$2" body="${3:-}"
-    local args=(-sS --fail -m 10 -X "$method" -H "Authorization: Bearer $(token)")
+    local args=(-sS --fail-with-body -m 10 -X "$method" -H "Authorization: Bearer $(token)")
     [ -n "$body" ] && args+=(-H "Content-Type: application/json" -d "$body")
     curl "${args[@]}" "$TASKS_URL$path"
+}
+
+# A write that must explain itself: on refusal the server's message goes to
+# stderr (the shell service shows it in the board's footer) and exit is 2.
+# A tag the server will not take — it normalizes nothing, by design — used
+# to vanish here as a bare exit code.
+write() {
+    local out msg
+    if out=$(api "$@" 2>/dev/null); then return 0; fi
+    msg=$(jq -r '.error.message // .error.code // .message // empty' <<<"$out" 2>/dev/null || true)
+    echo "${msg:-${out:-no response from $TASKS_URL}}" >&2
+    exit 2
 }
 
 # The login runs headless from the bar widget's button, so every outcome —
@@ -190,7 +202,7 @@ add() {
     else
         doc=$(jq -cn --arg title "$title" '{title: $title, status: "open"}')
     fi
-    api POST /api/tasks "$doc" >/dev/null || exit 2
+    write POST /api/tasks "$doc"
 }
 
 # `done` is a shell keyword, hence the function name.
@@ -200,7 +212,7 @@ done_task() {
         || { echo "usage: omarchy-tasks done <seq> <version>" >&2; exit 2; }
     local doc
     doc=$(jq -cn --argjson v "$version" '{status: "done", expected_version: $v}')
-    api POST "/api/tasks/$seq/status" "$doc" >/dev/null || exit 2
+    write POST "/api/tasks/$seq/status" "$doc"
 }
 
 # Refile: a folder is the first tag, so moving a task is rewriting tags[0]
@@ -224,7 +236,7 @@ move_task() {
                   | with_entries(select(.value != null))
                   | if .tags == [] then del(.tags) else . end),
            expected_version: $v}') || exit 2
-    api POST "/api/tasks/$seq" "$doc" >/dev/null || exit 2
+    write POST "/api/tasks/$seq" "$doc"
 }
 
 today() {
