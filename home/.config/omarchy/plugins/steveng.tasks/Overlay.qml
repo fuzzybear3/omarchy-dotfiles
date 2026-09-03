@@ -133,7 +133,7 @@ Item {
   }
 
   function beginMove() {
-    if (!root.currentTask) return
+    if (!root.currentTask) { root.flash("Nothing to move here — pick a task first (0 is the stack)"); return }
     root.moveMode = true
     root.moveTarget = root.folderIndex
   }
@@ -149,11 +149,17 @@ Item {
     if (!task || !root.service) return
     var current = task.tags && task.tags.length > 0 ? task.tags[0] : ""
     if (current === folderName) return
+    console.log("steveng.tasks: file seq " + task.seq + " -> " + (folderName === "" ? "stack" : folderName))
     root.service.moveTask(task.seq, task.version, folderName)
   }
 
   function endDrag() {
-    if (root.dragTask !== null) ghost.Drag.drop()
+    if (root.dragTask !== null) {
+      var moved = ghost.visible
+      var action = ghost.Drag.drop()
+      if (moved) console.log("steveng.tasks: drag of seq " + root.dragTask.seq
+        + (action === Qt.IgnoreAction ? " released over nothing" : " dropped"))
+    }
     root.dragTask = null
   }
 
@@ -177,7 +183,15 @@ Item {
     root.service.addTask(t, tag)
   }
 
+  property string flashText: ""
+  function flash(text) {
+    root.flashText = text
+    flashTimer.restart()
+  }
+  Timer { id: flashTimer; interval: 2500; onTriggered: root.flashText = "" }
+
   function hintText() {
+    if (root.flashText !== "") return root.flashText
     if (root.loggedOut) return "Log in from the bar widget"
     if (root.moveMode) return "Move to:  j/k or 0–9 pick  ·  Enter confirm  ·  Esc cancel"
     return "j/k move  ·  Tab column  ·  0–9 folder  ·  d done  ·  m move  ·  n new  ·  f folder  ·  r refresh  ·  Esc"
@@ -489,11 +503,10 @@ Item {
                       var name = text.trim().replace(/\s+/g, "-")
                       text = ""
                       root.folderInputOpen = false
-                      if (name !== "" && root.service) {
-                        root.service.ensureFolder(name)
-                        root.selectedFolder = name
-                        root.taskIndex = 0
-                      }
+                      // Stay where the tasks are: switching into the new,
+                      // empty folder left nothing under the cursor to `m`
+                      // or drag — the way the first real attempt failed.
+                      if (name !== "" && root.service) root.service.ensureFolder(name)
                       keyCatcher.forceActiveFocus()
                     }
                     Keys.onEscapePressed: {
@@ -755,7 +768,7 @@ Item {
             width: parent.width
             textFormat: Text.PlainText
             text: root.hintText()
-            color: root.moveMode ? root.selectedText : root.muted
+            color: root.moveMode || root.flashText !== "" ? root.selectedText : root.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             elide: Text.ElideRight
