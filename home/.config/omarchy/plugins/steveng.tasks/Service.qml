@@ -6,8 +6,10 @@ import Quickshell.Io
 // one BarWidget per monitor; they all bind to this single instance through
 // bar.shell.serviceFor("steveng.tasks"), so the faces and panels cannot
 // disagree, and the tasks API is polled exactly once per tick no matter how
-// many monitors are connected. omarchy-tasks' own login flock stays as the
-// second line of defense — it also covers a login run from a terminal.
+// many monitors are connected. The overlay (Overlay.qml, the big board) is
+// handed the same instance by the shell's panel loader as `service`.
+// omarchy-tasks' own login flock stays as the second line of defense — it
+// also covers a login run from a terminal.
 Item {
   id: service
   visible: false
@@ -35,6 +37,15 @@ Item {
   property int doneVersion: 0
   property string addTitle: ""
   property string addTag: ""
+  property int moveSeq: 0
+  property int moveVersion: 0
+  property string moveFolder: "-"
+
+  // Folders that exist by intention only, so far: a folder is a tag, and a
+  // tag with no open task has no row to drop onto. The overlay's "new
+  // folder" names live here until a task lands in them (session-scoped —
+  // the server never sees an empty folder, by design).
+  property var extraFolders: []
 
   // One line at mount: seeing it once in the journal — with two monitors —
   // is the proof the service pattern took.
@@ -86,6 +97,45 @@ Item {
     addTitle = title
     addTag = tag === undefined ? "" : String(tag).trim()
     addProc.running = true
+  }
+
+  // Refile under the version the face displayed; "" or "-" means the stack.
+  function moveTask(seq, version, folder) {
+    if (moveProc.running) return
+    var f = folder === undefined || folder === null ? "" : String(folder).trim()
+    moveSeq = seq
+    moveVersion = version
+    moveFolder = f === "" ? "-" : f
+    moveProc.running = true
+  }
+
+  function ensureFolder(name) {
+    name = String(name).trim()
+    if (name === "" || name === "-") return
+    if (extraFolders.indexOf(name) !== -1) return
+    var next = extraFolders.slice()
+    next.push(name)
+    extraFolders = next
+  }
+
+  // The overlay's model: the stack first, then every folder that holds a
+  // task, then the intended-but-empty ones. Reads panelData and
+  // extraFolders, so a binding on it re-evaluates when either changes.
+  function folderList() {
+    var out = [{ name: "", label: "Stack", tasks: panelData ? panelData.stack : [], pending: false }]
+    var seen = {}
+    if (panelData) {
+      for (var i = 0; i < panelData.folders.length; i++) {
+        var f = panelData.folders[i]
+        seen[f.name] = true
+        out.push({ name: f.name, label: f.name, tasks: f.tasks, pending: false })
+      }
+    }
+    for (var j = 0; j < extraFolders.length; j++) {
+      if (seen[extraFolders[j]]) continue
+      out.push({ name: extraFolders[j], label: extraFolders[j], tasks: [], pending: true })
+    }
+    return out
   }
 
   // Armed by the widgets after a floating-terminal capture: the prompt may
@@ -178,6 +228,15 @@ Item {
     command: service.addTag === ""
       ? ["omarchy-tasks", "add", service.addTitle]
       : ["omarchy-tasks", "add", "-t", service.addTag, service.addTitle]
+    onExited: function() {
+      service.fetchPanel()
+      service.refresh()
+    }
+  }
+
+  Process {
+    id: moveProc
+    command: ["omarchy-tasks", "move", String(service.moveSeq), String(service.moveVersion), service.moveFolder]
     onExited: function() {
       service.fetchPanel()
       service.refresh()

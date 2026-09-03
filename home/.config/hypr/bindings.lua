@@ -32,6 +32,8 @@ o.bind("SUPER + ALT + B", "Japanese buddy (next character)", "/home/steveng/lab/
 -- o.bind("SUPER + H", nil, "voxtype record toggle")
 -- o.bind("SUPER + PERIOD", nil, "omarchy-shell shell toggle omarchy.emojis")
 
--- Personal tasks quick capture (omarchy-tasks; server-systems apps/tasks).
+-- Personal tasks board (steveng.tasks overlay; server-systems apps/tasks):
+-- folders, drag-and-drop filing, and a capture row. The floating-terminal
+-- capture it replaces is still `omarchy-tasks capture` from any shell.
 -- SUPER+T is Omarchy's float toggle, so the T goes behind SHIFT.
-o.bind("SUPER + SHIFT + T", "Capture a task", "omarchy-launch-floating-terminal-with-presentation omarchy-tasks capture")
+o.bind("SUPER + SHIFT + T", "Tasks board", "omarchy-shell shell toggle steveng.tasks")

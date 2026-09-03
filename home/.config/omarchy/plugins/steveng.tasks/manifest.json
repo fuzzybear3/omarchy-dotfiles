@@ -2,20 +2,23 @@
   "schemaVersion": 1,
   "id": "steveng.tasks",
   "name": "Personal tasks",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Steven Guido",
-  "description": "Due-today count from the platform tasks service; click for the panel (today, inbox, capture)",
+  "description": "Open-task count from the platform tasks service; click for the panel (stack, folders, capture); SUPER+SHIFT+T for the board overlay with drag-and-drop filing",
   "kinds": [
     "service",
-    "bar-widget"
+    "bar-widget",
+    "overlay"
   ],
+  "keepLoaded": true,
   "entryPoints": {
     "service": "Service.qml",
-    "barWidget": "BarWidget.qml"
+    "barWidget": "BarWidget.qml",
+    "overlay": "Overlay.qml"
   },
   "barWidget": {
     "displayName": "Personal tasks",
-    "description": "Tasks due today; panel with today view, inbox, and inline capture",
+    "description": "Open tasks on the stack; panel with stack, folders, and inline capture",
     "category": "Productivity",
     "allowMultiple": false
   }

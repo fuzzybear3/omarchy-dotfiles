@@ -10,6 +10,7 @@
 #   omarchy-tasks panel     {date, stack[], folders[]} JSON, for the panel
 #   omarchy-tasks add [-t F] T   push task T, optionally into folder F
 #   omarchy-tasks done N V  mark task N done, under the version V read
+#   omarchy-tasks move N V F   refile task N into folder F ("-" = the stack)
 #   omarchy-tasks today     the today view, readable
 #   omarchy-tasks open      the web interface (once it exists)
 #
@@ -202,6 +203,30 @@ done_task() {
     api POST "/api/tasks/$seq/status" "$doc" >/dev/null || exit 2
 }
 
+# Refile: a folder is the first tag, so moving a task is rewriting tags[0]
+# through the guarded full-document replace — the rest of the document
+# round-trips untouched, and a stale version 409s like any other write.
+# "-" unfiles (back to the stack). Read fields the server computes (seq,
+# version, created_at, …) are dropped: the replace accepts authored fields.
+move_task() {
+    local seq="${1:-}" version="${2:-}" folder="${3:-}"
+    [ -n "$seq" ] && [ -n "$version" ] && [ -n "$folder" ] \
+        || { echo "usage: omarchy-tasks move <seq> <version> <folder|->" >&2; exit 2; }
+    local record doc
+    record=$(api GET "/api/tasks/$seq" 2>/dev/null) || exit 2
+    doc=$(jq -cn --argjson r "$record" --argjson v "$version" --arg f "$folder" '
+        ($r.tags // []) as $tags
+        | (if $f == "-" then $tags[1:]
+           else [$f] + ($tags[1:] | map(select(. != $f))) end) as $next
+        | {task: ({title: $r.title, notes: $r.notes, status: $r.status,
+                   due: $r.due, defer_until: $r.defer_until,
+                   tracker_ref: $r.tracker_ref, tags: $next}
+                  | with_entries(select(.value != null))
+                  | if .tags == [] then del(.tags) else . end),
+           expected_version: $v}') || exit 2
+    api POST "/api/tasks/$seq" "$doc" >/dev/null || exit 2
+}
+
 today() {
     api GET "/api/tasks?view=today&today=$(date +%F)" \
         | jq -r '.tasks[] | "\(.seq)\t\(.due // "")\t\(.title)"'
@@ -214,7 +239,8 @@ case "${1:-}" in
     panel) panel ;;
     add) shift; add "$@" ;;
     done) shift; done_task "$@" ;;
+    move) shift; move_task "$@" ;;
     today) today ;;
     open) exec xdg-open "$TASKS_URL" ;;
-    *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
