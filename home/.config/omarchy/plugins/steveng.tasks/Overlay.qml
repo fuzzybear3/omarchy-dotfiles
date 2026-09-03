@@ -65,7 +65,28 @@ Item {
       if (folders[i].name === selectedFolder) return i
     return 0
   }
-  readonly property var tasks: folders[folderIndex].tasks
+  // The overview (`a`, or the All row): every open task in one list,
+  // grouped under its folder. Rows are copies of the tasks with three
+  // extra fields — group, first, groupCount — so the delegate can draw the
+  // heading above a group's first row; seq/version/tags ride along, so
+  // drag, m, and d work from here exactly as from a folder.
+  property bool overview: false
+  function allTasks() {
+    var out = []
+    for (var i = 0; i < folders.length; i++) {
+      var f = folders[i]
+      for (var j = 0; j < f.tasks.length; j++) {
+        var t = Object.assign({}, f.tasks[j])
+        t.group = f.label
+        t.first = j === 0
+        t.groupCount = f.tasks.length
+        out.push(t)
+      }
+    }
+    return out
+  }
+  readonly property var tasks: overview ? allTasks() : folders[folderIndex].tasks
+  readonly property int groupHeaderHeight: Style.space(26)
   property int taskIndex: 0
   readonly property int effectiveTaskIndex: Math.max(0, Math.min(taskIndex, tasks.length - 1))
   readonly property var currentTask: tasks.length > 0 ? tasks[effectiveTaskIndex] : null
@@ -113,8 +134,15 @@ Item {
 
   function selectFolder(i) {
     if (i < 0 || i >= folders.length) return
+    root.overview = false
     root.selectedFolder = folders[i].name
     root.taskIndex = 0
+  }
+
+  function showAll() {
+    root.overview = true
+    root.taskIndex = 0
+    root.focusColumn = "tasks"
   }
 
   function moveCursor(delta) {
@@ -171,7 +199,7 @@ Item {
 
   function capture(text) {
     var t = String(text).trim()
-    var tag = root.selectedFolder
+    var tag = root.overview ? "" : root.selectedFolder
     if (t.charAt(0) === "#") {
       var sp = t.indexOf(" ")
       if (sp > 1) {
@@ -203,7 +231,7 @@ Item {
     if (root.flashText !== "") return root.flashText
     if (root.loggedOut) return "Log in from the bar widget"
     if (root.moveMode) return "Move to:  j/k or 0–9 pick  ·  Enter confirm  ·  Esc cancel"
-    return "j/k move  ·  Tab column  ·  0–9 folder  ·  d done  ·  m move  ·  n new  ·  f folder  ·  r refresh  ·  Esc"
+    return "j/k move  ·  Tab column  ·  a all  ·  0–9 folder  ·  d done  ·  m move  ·  n new  ·  f folder  ·  r refresh  ·  Esc"
   }
 
   function handleKey(event) {
@@ -244,6 +272,11 @@ Item {
     if (k === Qt.Key_F) {
       root.folderInputOpen = true
       Qt.callLater(function() { folderInput.forceActiveFocus() })
+      return true
+    }
+    if (k === Qt.Key_A) {
+      if (root.overview) root.selectFolder(root.folderIndex)
+      else root.showAll()
       return true
     }
     if (k === Qt.Key_R) { root.refresh(); return true }
@@ -367,6 +400,53 @@ Item {
                 width: parent.width
                 spacing: Style.space(3)
 
+                // All: the overview. Not a folder — it sits outside the
+                // digit indexes (0 stays the stack) and is never a drop
+                // target.
+                Rectangle {
+                  id: allRow
+                  width: folderList.width - root.contentSpacing
+                  height: root.rowHeight
+                  radius: root.cornerRadius
+                  color: root.overview ? root.selectedBackground
+                    : allMouse.containsMouse ? Util.alpha(root.foreground, 0.04)
+                    : "transparent"
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: "\uf03a  All"
+                    color: root.overview ? root.selectedText : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.title
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: root.service && root.service.openCount >= 0 ? String(root.service.openCount) : ""
+                    color: root.overview ? root.selectedText : root.muted
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  MouseArea {
+                    id: allMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      root.showAll()
+                      keyCatcher.forceActiveFocus()
+                    }
+                  }
+                }
+
                 Repeater {
                   model: root.folders
 
@@ -375,7 +455,7 @@ Item {
                     required property int index
                     required property var modelData
 
-                    readonly property bool isSelected: index === root.folderIndex
+                    readonly property bool isSelected: !root.overview && index === root.folderIndex
                     readonly property bool isTarget: root.moveMode && index === root.moveTarget
                     readonly property bool lit: isTarget || dropZone.containsDrag
 
@@ -570,7 +650,7 @@ Item {
                 highlightFollowsCurrentItem: false
                 onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
 
-                delegate: Rectangle {
+                delegate: Item {
                   id: taskRow
                   required property int index
                   required property var modelData
@@ -579,85 +659,112 @@ Item {
                     && (root.focusColumn === "tasks" || root.moveMode)
                   readonly property bool isMoving: root.moveMode && index === root.effectiveTaskIndex
                   readonly property string due: root.service ? root.service.dueSide(modelData) : ""
+                  readonly property bool showHeader: root.overview && modelData.first === true
 
                   width: ListView.view.width
-                  height: root.rowHeight
-                  radius: root.cornerRadius
-                  color: hasCursor ? root.selectedBackground
-                    : rowMouse.containsMouse ? Util.alpha(root.foreground, 0.04)
-                    : "transparent"
-                  border.color: isMoving ? root.accent : "transparent"
-                  border.width: isMoving ? Math.max(1, Style.normalBorderWidth) : 0
-
-                  // The drag surface sits UNDER the done button, so the
-                  // button keeps its click and everything else on the row
-                  // is grabbable. preventStealing keeps the ListView from
-                  // turning a vertical drag into a flick.
-                  MouseArea {
-                    id: rowMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    preventStealing: true
-                    cursorShape: root.dragTask !== null ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                    drag.target: ghost
-                    drag.axis: Drag.XAndYAxis
-                    drag.threshold: 6
-                    drag.smoothed: false
-                    onPressed: function(mouse) {
-                      root.taskIndex = taskRow.index
-                      root.focusColumn = "tasks"
-                      root.moveMode = false
-                      var p = mapToItem(card, mouse.x, mouse.y)
-                      root.dragStartX = p.x - Style.space(12)
-                      root.dragStartY = p.y - root.rowHeight / 2
-                      ghost.x = root.dragStartX
-                      ghost.y = root.dragStartY
-                      root.dragTask = taskRow.modelData
-                      keyCatcher.forceActiveFocus()
-                    }
-                    onReleased: root.endDrag()
-                    onCanceled: root.dragTask = null
-                  }
-
-                  PanelActionButton {
-                    id: doneBtn
-                    iconText: "\uf058"
-                    tooltipText: "Mark done (d)"
-                    foreground: taskRow.hasCursor ? root.selectedText : root.muted
-                    hoverColor: root.accent
-                    fontFamily: root.fontFamily
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(6)
-                    anchors.verticalCenter: parent.verticalCenter
-                    onClicked: if (root.service) root.service.markDone(taskRow.modelData.seq, taskRow.modelData.version)
-                  }
+                  height: root.rowHeight + (showHeader ? root.groupHeaderHeight : 0)
 
                   Text {
+                    visible: taskRow.showHeader
                     textFormat: Text.PlainText
-                    text: taskRow.modelData.title
-                    color: taskRow.hasCursor ? root.selectedText : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.title
-                    elide: Text.ElideRight
-                    anchors.left: doneBtn.right
-                    anchors.leftMargin: Style.space(8)
-                    anchors.right: dueLabel.left
-                    anchors.rightMargin: Style.space(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-
-                  Text {
-                    id: dueLabel
-                    textFormat: Text.PlainText
-                    text: taskRow.due
-                    color: taskRow.due === "overdue" ? root.urgent
-                      : taskRow.hasCursor ? root.selectedText : root.muted
+                    text: taskRow.showHeader
+                      ? String(taskRow.modelData.group).toUpperCase() + "  " + taskRow.modelData.groupCount
+                      : ""
+                    color: root.muted
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
-                    font.bold: taskRow.due === "overdue"
+                    font.bold: true
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(8)
+                    anchors.top: parent.top
+                    height: root.groupHeaderHeight
+                    verticalAlignment: Text.AlignBottom
+                    bottomPadding: Style.space(4)
+                  }
+
+                  Rectangle {
+                    id: rowBody
+                    anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.rightMargin: Style.space(10)
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.bottom: parent.bottom
+                    height: root.rowHeight
+                    radius: root.cornerRadius
+                    color: taskRow.hasCursor ? root.selectedBackground
+                      : rowMouse.containsMouse ? Util.alpha(root.foreground, 0.04)
+                      : "transparent"
+                    border.color: taskRow.isMoving ? root.accent : "transparent"
+                    border.width: taskRow.isMoving ? Math.max(1, Style.normalBorderWidth) : 0
+
+                    // The drag surface sits UNDER the done button, so the
+                    // button keeps its click and everything else on the row
+                    // is grabbable. preventStealing keeps the ListView from
+                    // turning a vertical drag into a flick.
+                    MouseArea {
+                      id: rowMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      preventStealing: true
+                      cursorShape: root.dragTask !== null ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                      drag.target: ghost
+                      drag.axis: Drag.XAndYAxis
+                      drag.threshold: 6
+                      drag.smoothed: false
+                      onPressed: function(mouse) {
+                        root.taskIndex = taskRow.index
+                        root.focusColumn = "tasks"
+                        root.moveMode = false
+                        var p = mapToItem(card, mouse.x, mouse.y)
+                        root.dragStartX = p.x - Style.space(12)
+                        root.dragStartY = p.y - root.rowHeight / 2
+                        ghost.x = root.dragStartX
+                        ghost.y = root.dragStartY
+                        root.dragTask = taskRow.modelData
+                        keyCatcher.forceActiveFocus()
+                      }
+                      onReleased: root.endDrag()
+                      onCanceled: root.dragTask = null
+                    }
+
+                    PanelActionButton {
+                      id: doneBtn
+                      iconText: "\uf058"
+                      tooltipText: "Mark done (d)"
+                      foreground: taskRow.hasCursor ? root.selectedText : root.muted
+                      hoverColor: root.accent
+                      fontFamily: root.fontFamily
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(6)
+                      anchors.verticalCenter: parent.verticalCenter
+                      onClicked: if (root.service) root.service.markDone(taskRow.modelData.seq, taskRow.modelData.version)
+                    }
+
+                    Text {
+                      textFormat: Text.PlainText
+                      text: taskRow.modelData.title
+                      color: taskRow.hasCursor ? root.selectedText : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.title
+                      elide: Text.ElideRight
+                      anchors.left: doneBtn.right
+                      anchors.leftMargin: Style.space(8)
+                      anchors.right: dueLabel.left
+                      anchors.rightMargin: Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                      id: dueLabel
+                      textFormat: Text.PlainText
+                      text: taskRow.due
+                      color: taskRow.due === "overdue" ? root.urgent
+                        : taskRow.hasCursor ? root.selectedText : root.muted
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: taskRow.due === "overdue"
+                      anchors.right: parent.right
+                      anchors.rightMargin: Style.space(10)
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
                   }
                 }
               }
@@ -683,6 +790,7 @@ Item {
                   textFormat: Text.PlainText
                   text: root.loggedOut ? "Not logged in"
                     : !root.hasData ? (root.service && root.service.loading ? "Fetching tasks…" : "No data yet")
+                    : root.overview ? "Nothing open"
                     : root.folderIndex === 0 ? "Stack empty — press n to capture"
                     : "Nothing filed here — drag a task in, or press n"
                   color: root.foreground
@@ -757,7 +865,7 @@ Item {
               Text {
                 visible: captureInput.text === "" && !captureInput.activeFocus
                 textFormat: Text.PlainText
-                text: root.folderIndex === 0
+                text: root.overview || root.folderIndex === 0
                   ? "New task on the stack…  (n; #folder title files it)"
                   : "New task in " + root.folders[root.folderIndex].label + "…  (n)"
                 color: root.muted
