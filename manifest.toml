@@ -105,7 +105,7 @@ note = "Claude Code status line (p10k snazzy palette); wired up via statusLine i
 
 [[config]]
 path = ".claude/settings.json"
-note = "Claude Code settings: statusLine, model, fullscreen TUI; Claude Code itself edits this at runtime"
+note = "Claude Code settings: statusLine, model, fullscreen TUI, herdr SessionStart hook (the hook script at .claude/hooks/herdr-agent-state.sh is herdr-managed: `herdr integration install claude`); Claude Code itself edits this at runtime"
 
 # ---------------------------------------------------------------------------
 # System state: group memberships (usermod -aG) and services kept enabled

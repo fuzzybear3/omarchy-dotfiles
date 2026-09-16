@@ -68,6 +68,13 @@ close_workspace = "prefix+shift+k"
 previous_workspace = ["prefix+shift+p", "alt+up"]
 next_workspace = ["prefix+shift+n", "alt+down"]
 
+[session]
+# On server restart (reboot, `herdr server stop`, update) relaunch each Claude pane
+# with `claude --resume <id>` instead of a bare shell. The id comes from the
+# SessionStart hook that `herdr integration install claude` adds to
+# ~/.claude/settings.json; panes started before that hook existed come back as shells.
+resume_agents_on_restore = true
+
 [ui]
 accent = "blue"
 
