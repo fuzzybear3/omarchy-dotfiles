@@ -5,11 +5,10 @@
 # is the server's own ROOT_URL, so every link it hands back matches.
 GITEA_URL="http://100.64.0.1:3000"
 
-# Read token: reuses the gitea-mcp token for this server on purpose — one
-# credential to revoke, and omarchy-gitea only ever GETs. Tokens do not carry
-# over between Gitea instances, hence the per-server file. Point this
-# elsewhere to split them.
-GITEA_TOKEN_FILE="$HOME/.config/gitea-mcp/token-dev-box-0"
+# Read token: the tracker's own, scoped read:repository + read:user +
+# read:organization (without the last, org repo listing fails). The server
+# refuses it any write, so the bar holds nothing worth stealing.
+GITEA_TOKEN_FILE="$HOME/.config/gitea-mcp/token-dev-box-0-readonly"
 
 # Explicit tracking list (space-separated owner/repo). Unset means every
 # unarchived repo the token can push to, rediscovered on each poll.

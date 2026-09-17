@@ -32,8 +32,8 @@ GITEA_URL="${GITEA_URL%/}"
 
 token() { tr -d '[:space:]' < "$GITEA_TOKEN_FILE"; }
 
-# GET only — this tracker never writes to Gitea, which is also why reusing
-# the gitea-mcp token is acceptable despite its full scope. -4 dates from the
+# GET only — this tracker never writes to Gitea, and the configured token is
+# read-scoped so it could not if it tried. -4 dates from the
 # old mDNS-named server, whose link-local AAAA curl tried first and timed out
 # on (observed 2026-09-02); harmless against the IPv4 tailnet address.
 api() {
