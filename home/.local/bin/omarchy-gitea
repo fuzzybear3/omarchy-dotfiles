@@ -22,7 +22,7 @@ CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/gitea/config"
 STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-gitea/state.json"
 
 # Defaults; ~/.config/gitea/config overrides any of them.
-GITEA_URL="http://nmc-pc-457.local:3000"
+GITEA_URL="http://100.64.0.1:3000"
 GITEA_TOKEN_FILE="$HOME/.config/gitea-mcp/token"
 GITEA_REPOS=""
 GITEA_PRIMARY=""
@@ -33,9 +33,9 @@ GITEA_URL="${GITEA_URL%/}"
 token() { tr -d '[:space:]' < "$GITEA_TOKEN_FILE"; }
 
 # GET only — this tracker never writes to Gitea, which is also why reusing
-# the gitea-mcp token is acceptable despite its full scope. -4 because the
-# server's mDNS also advertises a link-local AAAA that curl tries first and
-# times out on (observed 2026-09-02; avahi's A record works every time).
+# the gitea-mcp token is acceptable despite its full scope. -4 dates from the
+# old mDNS-named server, whose link-local AAAA curl tried first and timed out
+# on (observed 2026-09-02); harmless against the IPv4 tailnet address.
 api() {
     curl -4 -sS --fail -m 10 -H "Authorization: token $(token)" "$GITEA_URL/api/v1$1"
 }
