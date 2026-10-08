@@ -42,8 +42,12 @@ Ui.Panel {
   readonly property var detailRun: svc ? svc.detailRun : null
   readonly property bool detailInFlight: svc ? svc.detailInFlight : false
 
-  // The system-monitor panel's color recipe, so side-by-side panels match.
-  readonly property color foreground: bar ? bar.barForeground : Color.foreground
+  // Panel text sits on the popup background, so it takes the popup palette's
+  // text color. NOT bar.barForeground: that one is picked to read against the
+  // wallpaper behind a transparent bar, and a light wallpaper makes it dark,
+  // which is invisible on a dark popup. The bar glyph is a Ui.WidgetButton and
+  // takes barForeground on its own; this property only colors the panel.
+  readonly property color foreground: Color.popups.text
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color accent: Color.accent
   readonly property color muted: Qt.darker(foreground, 1.4)
