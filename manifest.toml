@@ -52,6 +52,14 @@ path = ".config/gitea/config"
 note = "Gitea origin (GITEA_URL) and tracker overrides. The token is the gitea-mcp one at ~/.config/gitea-mcp/token, deliberately NOT managed"
 
 [[config]]
+path = ".local/bin/omarchy-stamp"
+note = "Date stamp (日付印): renders today's date with the names in .config/stamp/config.toml and puts the PNG on the clipboard. One job, no arguments. Python with Pillow, plus wl-copy"
+
+[[config]]
+path = ".config/stamp/config.toml"
+note = "Names, ink color, font and pixel size for omarchy-stamp"
+
+[[config]]
 path = ".config/omarchy/plugins/steveng.gitea"
 note = "Gitea tracker plugin: Service.qml polls once per shell (kind service, the media plugin's shape); per-monitor BarWidget faces + single-repo panel (jobs, steps, recent runs)"
 

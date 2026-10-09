@@ -1,0 +1,17 @@
+# omarchy-stamp configuration. Anything left out uses the script's default.
+
+# Top row: given name. Bottom row: family name. Latin letters, as on the
+# stamps colleagues use. Swap them here if your office reads it the other way.
+top = "Steven"
+bottom = "Guido"
+
+# Ink color, #rrggbb. The default is the pure red the reference stamps use;
+# a deeper seal red such as "#cd1b24" looks more like real ink.
+#color = "#ff0303"
+
+# Any fontconfig pattern. `fc-match 'Noto Serif:bold'` shows what it resolves to.
+#font = "Noto Serif:bold"
+
+# Pixel size of the square PNG. Spreadsheet apps paste at pixel size, so
+# this is also roughly how big it lands; shrink it there if too large.
+#size = 128

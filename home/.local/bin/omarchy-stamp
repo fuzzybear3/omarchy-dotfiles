@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""omarchy-stamp — today's date stamp (日付印) as a PNG on the clipboard.
+
+    omarchy-stamp        render the stamp for today's date and copy it
+
+One job, no arguments. The stamp is a ring split by two rules: a given name
+above, the date in the middle (YYYY.MM.DD), a family name below, laid out
+like the stamps colleagues paste into spreadsheets. The background is
+transparent, so it takes the fill of whatever cell it lands on. The same day
+and the same config give the same image; it is rendered fresh each run so
+the date is always today's.
+
+Names, ink color, font and pixel size come from ~/.config/stamp/config.toml;
+anything unset uses the defaults below. The fitted PNG is also kept at
+~/.cache/omarchy-stamp/stamp.png (overwritten each run) for apps that want a
+file. Needs Pillow, wl-copy (wl-clipboard) and fc-match (fontconfig);
+notify-send is used if present.
+"""
+
+import datetime
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+DEFAULTS = {
+    "top": "Steven",              # given name, above the date
+    "bottom": "Guido",            # family name, below it
+    "color": "#ff0303",           # ink: the pure red the reference stamps use
+    "font": "Noto Serif:bold",    # any fontconfig pattern, see `fc-match`
+    "size": 128,                  # pixels, the PNG is square
+}
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "stamp" / "config.toml"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy-stamp" / "stamp.png"
+
+CANVAS = 1024                     # drawn large, then reduced for smooth edges
+PROBE = 400                       # font size used to measure text before scaling
+
+
+def die(msg, code=1):
+    print(f"omarchy-stamp: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def load_config():
+    cfg = dict(DEFAULTS)
+    if CONFIG.exists():
+        try:
+            cfg.update(tomllib.loads(CONFIG.read_text()))
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            die(f"{CONFIG}: {e}")
+    unknown = set(cfg) - set(DEFAULTS)
+    if unknown:
+        die(f"{CONFIG}: unknown key(s) {', '.join(sorted(unknown))}")
+    return cfg
+
+
+def font_file(pattern):
+    out = subprocess.run(["fc-match", "-f", "%{file}", pattern], capture_output=True, text=True)
+    path = out.stdout.strip()
+    if out.returncode or not path or not Path(path).exists():
+        die(f"no font for fontconfig pattern {pattern!r}")
+    return path
+
+
+def ink_box(ImageFont, Image, ImageDraw, path, text, size):
+    """Ink bounding box of `text` relative to its baseline origin."""
+    f = ImageFont.truetype(path, size)
+    layer = Image.new("L", (int(f.getlength(text)) + 2 * size, 3 * size), 0)
+    ImageDraw.Draw(layer).text((size, 2 * size), text, font=f, fill=255, anchor="ls")
+    box = layer.getbbox()
+    if box is None:
+        die(f"nothing to draw for {text!r}")
+    return box[0] - size, box[1] - 2 * size, box[2] - size, box[3] - 2 * size
+
+
+def render(cfg, when):
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        die("Pillow is missing (pacman -S python-pillow)")
+
+    color = cfg["color"].lstrip("#")
+    if len(color) != 6:
+        die(f"color must be #rrggbb, got {cfg['color']!r}")
+    ink = tuple(int(color[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
+    path = font_file(cfg["font"])
+    measure = lambda text, size: ink_box(ImageFont, Image, ImageDraw, path, text, size)
+
+    S = CANVAS
+    c = S / 2
+    ring_t = 0.036 * S                       # ring stroke
+    rule_t = 0.6 * ring_t                    # the two rules are a little finer
+    R = 0.48 * S - ring_t / 2                # ring centre-line radius
+    rule_off = 0.35 * R                      # rules sit this far above and below centre
+    r_lim = R - ring_t / 2 - 0.07 * R        # text must stay inside this circle
+
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outer = R + ring_t / 2
+    d.ellipse([c - outer, c - outer, c + outer, c + outer], outline=ink, width=round(ring_t))
+    for dy in (-rule_off, rule_off):
+        half = (R * R - dy * dy) ** 0.5
+        d.rectangle([c - half, c + dy - rule_t / 2, c + half, c + dy + rule_t / 2], fill=ink)
+
+    def scale_for(text, y_mid, max_w, max_h):
+        """Largest scale against the probe size that keeps the text inside the ring."""
+        l, t, r, b = measure(text, PROBE)
+        w0, h0 = r - l, b - t
+        lo, hi = 0.0, 20.0
+        for _ in range(40):
+            k = (lo + hi) / 2
+            w, h = w0 * k, h0 * k
+            ok = w <= max_w and h <= max_h and (w / 2) ** 2 + (abs(y_mid - c) + h / 2) ** 2 <= r_lim ** 2
+            lo, hi = (k, hi) if ok else (lo, k)
+        return lo
+
+    def draw_centered(text, y_mid, k):
+        size = max(8, round(PROBE * k))
+        l, t, r, b = measure(text, size)
+        font = ImageFont.truetype(path, size)
+        d.text((c - (l + r) / 2, y_mid - (t + b) / 2), text, font=font, fill=ink, anchor="ls")
+
+    band = ((c - rule_off - rule_t / 2) + (c - R + ring_t / 2)) / 2     # mid-height of the top band
+    nudge = 0.03 * R                          # sit the names a touch toward the middle
+    top_y, bottom_y = band + nudge, 2 * c - band - nudge
+
+    # Both names share one size, the smaller of the two fits, so the stamp looks even.
+    k_names = min(
+        scale_for(cfg["top"], top_y, 1.45 * R, 0.30 * R),
+        scale_for(cfg["bottom"], bottom_y, 1.45 * R, 0.30 * R),
+    )
+    draw_centered(cfg["top"], top_y, k_names)
+    draw_centered(cfg["bottom"], bottom_y, k_names)
+
+    date = f"{when:%Y.%m.%d}"
+    draw_centered(date, c, scale_for(date, c, 1.62 * R, 0.50 * R))
+
+    size = int(cfg["size"])
+    return date, img.resize((size, size), Image.LANCZOS), size
+
+
+def main():
+    if len(sys.argv) > 1:
+        die("takes no arguments; names, color, font and size live in " + str(CONFIG), 2)
+    for tool in ("wl-copy", "fc-match"):
+        if not shutil.which(tool):
+            die(f"{tool} not found")
+
+    cfg = load_config()
+    date, img, size = render(cfg, datetime.date.today())
+
+    CACHE.parent.mkdir(parents=True, exist_ok=True)
+    # 192 dpi tells dpi-aware apps this is two-thirds of an inch across.
+    img.save(CACHE, dpi=(192, 192))
+    with open(CACHE, "rb") as f:
+        subprocess.run(["wl-copy", "--type", "image/png"], stdin=f, check=True)
+
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "-a", "omarchy-stamp", "-i", str(CACHE),
+                        "Stamp copied", f"{date} is on the clipboard"], check=False)
+    print(f"{date} stamp copied to the clipboard ({size}px, also at {CACHE})")
+
+
+if __name__ == "__main__":
+    main()
