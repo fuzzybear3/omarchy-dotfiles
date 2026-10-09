@@ -11,15 +11,17 @@ and the same config give the same image; it is rendered fresh each run so
 the date is always today's.
 
 Names, ink color, font and pixel size come from ~/.config/stamp/config.toml;
-anything unset uses the defaults below. The fitted PNG is also kept at
-~/.cache/omarchy-stamp/stamp.png (overwritten each run) for apps that want a
-file. Needs Pillow, wl-copy (wl-clipboard) and fc-match (fontconfig);
-notify-send is used if present.
+anything unset uses the defaults below. The same PNG is written to
+/tmp/omarchy-stamp/stamp.png (overwritten each run) and the path is printed,
+for apps that want a file: file pickers cannot browse hidden folders such as
+~/.cache, and /tmp clears itself on reboot. Needs Pillow, wl-copy
+(wl-clipboard) and fc-match (fontconfig); notify-send is used if present.
 """
 
 import datetime
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tomllib
@@ -33,7 +35,9 @@ DEFAULTS = {
     "size": 128,                  # pixels, the PNG is square
 }
 CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "stamp" / "config.toml"
-CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy-stamp" / "stamp.png"
+# A fixed, visible path that a file picker can open. Not a hidden folder.
+OUT_DIR = Path("/tmp/omarchy-stamp")
+OUT = OUT_DIR / "stamp.png"
 
 CANVAS = 1024                     # drawn large, then reduced for smooth edges
 PROBE = 400                       # font size used to measure text before scaling
@@ -142,6 +146,18 @@ def render(cfg, when):
     return date, img.resize((size, size), Image.LANCZOS), size
 
 
+def save_png(img):
+    """Write the PNG where a file picker can reach it, in an owner-only folder."""
+    OUT_DIR.mkdir(mode=0o700, exist_ok=True)
+    info = OUT_DIR.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+        die(f"{OUT_DIR} exists but is not a folder of yours")
+    part = OUT.with_suffix(".tmp")
+    # 192 dpi tells dpi-aware apps this is two-thirds of an inch across.
+    img.save(part, format="PNG", dpi=(192, 192))
+    os.replace(part, OUT)           # atomic, so a picker never sees a half-written file
+
+
 def main():
     if len(sys.argv) > 1:
         die("takes no arguments; names, color, font and size live in " + str(CONFIG), 2)
@@ -152,16 +168,15 @@ def main():
     cfg = load_config()
     date, img, size = render(cfg, datetime.date.today())
 
-    CACHE.parent.mkdir(parents=True, exist_ok=True)
-    # 192 dpi tells dpi-aware apps this is two-thirds of an inch across.
-    img.save(CACHE, dpi=(192, 192))
-    with open(CACHE, "rb") as f:
+    save_png(img)
+    with open(OUT, "rb") as f:
         subprocess.run(["wl-copy", "--type", "image/png"], stdin=f, check=True)
 
     if shutil.which("notify-send"):
-        subprocess.run(["notify-send", "-a", "omarchy-stamp", "-i", str(CACHE),
+        subprocess.run(["notify-send", "-a", "omarchy-stamp", "-i", str(OUT),
                         "Stamp copied", f"{date} is on the clipboard"], check=False)
-    print(f"{date} stamp copied to the clipboard ({size}px, also at {CACHE})")
+    print(f"{date} stamp copied to the clipboard ({size}px). As a file:")
+    print(OUT)
 
 
 if __name__ == "__main__":
