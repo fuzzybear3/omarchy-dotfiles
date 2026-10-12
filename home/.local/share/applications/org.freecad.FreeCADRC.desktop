@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=FreeCAD (release candidate)
+GenericName=CAD Application
+Comment=Feature based parametric 3D CAD modeler - release candidate build
+Exec=freecad-rc %F
+Icon=org.freecad.FreeCADRC
+Terminal=false
+Categories=Graphics;Science;Engineering;
+StartupNotify=true
+# No MimeType on purpose: .FCStd files open in whichever FreeCAD is the default
+# handler, and a candidate build must not become that by accident, since saving
+# from it writes the newer file format.

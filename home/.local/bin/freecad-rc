@@ -1,0 +1,11 @@
+#!/bin/sh
+# FreeCAD release-candidate AppImage launcher. Same shape as freecad-weekly.
+#
+# The AppImage lives at ~/software/FreeCAD-rc.AppImage and is replaced by hand
+# when a newer candidate (or the final release) is published, so this launcher
+# never needs to change with the version.
+#
+# Settings and add-ons are per release line (~/.config/FreeCAD/v26-3), so a
+# 26.3 candidate shares them with the weekly builds and leaves the stable 1.1
+# install's (v1-1) alone.
+exec "$HOME/software/FreeCAD-rc.AppImage" "$@"

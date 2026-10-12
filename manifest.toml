@@ -60,6 +60,18 @@ path = ".config/stamp/config.toml"
 note = "Names, ink color, font and pixel size for omarchy-stamp"
 
 [[config]]
+path = ".local/bin/freecad-rc"
+note = "FreeCAD release-candidate launcher for ~/software/FreeCAD-rc.AppImage. The AppImage itself is not tracked; replace it by hand when a newer candidate is published"
+
+[[config]]
+path = ".local/share/applications/org.freecad.FreeCADRC.desktop"
+note = "App-menu entry 'FreeCAD (release candidate)'. No MimeType on purpose, so a candidate build never becomes the default .FCStd opener"
+
+[[config]]
+path = ".local/share/icons/hicolor/scalable/apps/org.freecad.FreeCADRC.svg"
+note = "Icon for the release-candidate entry, a copy of the stable FreeCAD icon"
+
+[[config]]
 path = ".config/omarchy/plugins/steveng.gitea"
 note = "Gitea tracker plugin: Service.qml polls once per shell (kind service, the media plugin's shape); per-monitor BarWidget faces + single-repo panel (jobs, steps, recent runs)"
 
