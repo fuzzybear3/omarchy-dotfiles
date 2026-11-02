@@ -124,6 +124,14 @@ path = ".claude/statusline.sh"
 note = "Claude Code status line (p10k snazzy palette); wired up via statusLine in settings.json"
 
 [[config]]
+path = ".config/bash/claude-accounts.sh"
+note = "claude-work alias and herdr resume routing between the two Claude accounts; needs one line in ~/.bashrc: . ~/.config/bash/claude-accounts.sh"
+
+[[config]]
+path = ".claude-work/settings.json"
+note = "Work account's Claude Code settings: status line and herdr SessionStart hook (`CLAUDE_CONFIG_DIR=~/.claude-work herdr integration install claude`); its login and history stay out of this repo"
+
+[[config]]
 path = ".claude/settings.json"
 note = "Claude Code settings: statusLine, model, fullscreen TUI, herdr SessionStart hook (the hook script at .claude/hooks/herdr-agent-state.sh is herdr-managed: `herdr integration install claude`); Claude Code itself edits this at runtime"
 

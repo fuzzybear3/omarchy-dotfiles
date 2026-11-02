@@ -20,6 +20,17 @@ tok_limit=$(echo "$input" | jq -r '.context_window.context_window_size // 200000
 five_hour_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 five_hour_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 
+# signed-in account (magenta 205) — first so a narrow terminal can't cut it off.
+# Read from the active config, so it reports the login itself: CLAUDE_CONFIG_DIR
+# moves the config file (see ~/.config/bash/claude-accounts.sh).
+org_type=$(jq -r '.oauthAccount.organizationType // empty' \
+  "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" 2>/dev/null)
+case "$org_type" in
+  "") ;;
+  claude_team|claude_enterprise) printf "\033[38;5;205mwork\033[0m  " ;;
+  *) printf "\033[38;5;205mpersonal\033[0m  " ;;
+esac
+
 # cwd basename (blue 81) — show just the leaf directory
 printf "\033[38;5;81m%s\033[0m" "$(basename "$cwd")"
 
