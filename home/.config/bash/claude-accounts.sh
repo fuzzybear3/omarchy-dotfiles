@@ -1,12 +1,17 @@
-# Claude Code on two accounts. Sourced from ~/.bashrc in interactive shells.
+# Transitional: Claude Code sessions that still live in ~/.claude-work.
+# Sourced from ~/.bashrc in interactive shells.
 #
-# Plain `claude` is the personal account; `claude-work` is the same binary with
-# its own config directory, so logins, history and memory stay separate.
-alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'
-
-# herdr saves only a session's id and restores it with `claude --resume <id>`,
-# typed into a pane's shell. Each id exists in one account's history, so a resume
-# whose transcript is in the work directory runs on the work account.
+# Accounts are Omarchy's job since 4.5: `omarchy agent account use work|main`
+# picks the account new sessions start as, and `claude` resolves to a mise
+# wrapper that points CLAUDE_CONFIG_DIR at it. History is shared between the
+# accounts, so a resume works whichever one is active.
+#
+# What is left here: sessions started before 2026-11-06 keep their transcripts
+# in ~/.claude-work/projects, which the shared history can't see. herdr restores
+# them with `claude --resume <id>` typed into a pane's shell, so route those to
+# the old directory. Delete this file, its ~/.bashrc line and ~/.claude-work
+# once those sessions are closed (merge ~/.claude-work/projects into
+# ~/.claude/projects first if any of them should survive).
 claude() {
   local arg id="" prev=""
   if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then

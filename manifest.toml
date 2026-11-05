@@ -125,11 +125,11 @@ note = "Claude Code status line (p10k snazzy palette); wired up via statusLine i
 
 [[config]]
 path = ".config/bash/claude-accounts.sh"
-note = "claude-work alias and herdr resume routing between the two Claude accounts; needs one line in ~/.bashrc: . ~/.config/bash/claude-accounts.sh"
+note = "Transitional since Omarchy 4.5 took over accounts (`omarchy agent account`): routes `claude --resume` of transcripts still in ~/.claude-work to that directory; needs one line in ~/.bashrc: . ~/.config/bash/claude-accounts.sh. Remove together with ~/.claude-work"
 
 [[config]]
 path = ".claude-work/settings.json"
-note = "Work account's Claude Code settings: status line and herdr SessionStart hook (`CLAUDE_CONFIG_DIR=~/.claude-work herdr integration install claude`); its login and history stay out of this repo"
+note = "Transitional: settings for the Claude sessions still running in ~/.claude-work (status line and herdr SessionStart hook); remove together with that directory"
 
 [[config]]
 path = ".claude/settings.json"
