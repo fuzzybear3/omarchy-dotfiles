@@ -12,6 +12,8 @@ bootstrap.py         the tool — one command, no arguments
 packages.txt         GENERATED — packages I installed on top of Omarchy
 home/                stow package; real files live here,
                      ~/.config/... are symlinks into it
+themes/              Omarchy themes, each linked as a whole directory
+                     through a symlink in home/ (see the manifest note)
 ```
 
 ## Usage

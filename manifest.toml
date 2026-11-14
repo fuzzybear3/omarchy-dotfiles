@@ -127,6 +127,10 @@ note = "Claude Code status line (p10k snazzy palette); wired up via statusLine i
 path = ".claude/settings.json"
 note = "Claude Code settings: statusLine, model, fullscreen TUI, herdr SessionStart hook (the hook script at .claude/hooks/herdr-agent-state.sh is herdr-managed: `herdr integration install claude`); Claude Code itself edits this at runtime"
 
+[[config]]
+path = ".config/omarchy/themes/afterwork-arcade"
+note = "Omarchy theme 'Afterwork Arcade': palette and three wallpapers from my arcade lobby render. Linked as ONE directory: the entry in home/ is a symlink to themes/afterwork-arcade, because `omarchy theme set` copies a theme with `cp -r`, which would copy per-file stow links as dangling ones"
+
 # ---------------------------------------------------------------------------
 # System state: group memberships (usermod -aG) and services kept enabled
 # and running (systemctl enable --now). A group change only applies to new

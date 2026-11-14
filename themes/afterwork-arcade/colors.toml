@@ -1,0 +1,39 @@
+# Afterwork Arcade: colours lifted from the lobby render of my arcade project.
+# The neon sign gives red (AFTERWORK) and the accent (ARCADE); each cabinet's
+# light strip gives one of the other hues.
+
+mode = "dark"
+
+accent = "#8fe6ff"
+selection = "#252b47"
+muted = "#3b4466"
+
+background = "#0b0d16"
+dark_background = "#07080f"
+darker_background = "#04050a"
+lighter_background = "#161a2a"
+
+foreground = "#c3cde4"
+dark_foreground = "#66708f"
+light_foreground = "#d5dcee"
+bright_foreground = "#e8eefc"
+
+# Window borders run pink to cyan, like the sign.
+hyprland_active_border = "rgba(ff3d68ee) rgba(8fe6ffee) 0deg"
+hyprland_inactive_border = "rgba(2a3150cc)"
+
+red = "#ff3d68"
+yellow = "#ffd23f"
+orange = "#ff8a1f"
+green = "#8dff5a"
+cyan = "#5fd0ff"
+blue = "#5c9dff"
+magenta = "#ff4fbf"
+brown = "#a0661a"
+
+bright_red = "#ff6f8f"
+bright_yellow = "#ffe27a"
+bright_green = "#b6ff94"
+bright_cyan = "#8fe6ff"
+bright_blue = "#8bb9ff"
+bright_magenta = "#ff8ad6"
