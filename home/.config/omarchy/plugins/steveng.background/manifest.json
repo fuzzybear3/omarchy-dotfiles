@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "steveng.background",
+  "name": "My Background",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Desktop background renderer with click handling and transitions. Clone of omarchy.background that also splits a wallpaper named <name>-span<N>.<ext> across N screens, left to right",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Background.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.background"
+  }
+}

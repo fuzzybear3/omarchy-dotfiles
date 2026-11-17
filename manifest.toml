@@ -128,8 +128,12 @@ path = ".claude/settings.json"
 note = "Claude Code settings: statusLine, model, fullscreen TUI, herdr SessionStart hook (the hook script at .claude/hooks/herdr-agent-state.sh is herdr-managed: `herdr integration install claude`); Claude Code itself edits this at runtime"
 
 [[config]]
+path = ".config/omarchy/plugins/steveng.background"
+note = "Clone of Omarchy's background plugin (`omarchy plugin clone omarchy.background`) with one change, marked `steveng:` in Background.qml: a wallpaper named <name>-span<N>.<ext> holds N pictures side by side and each screen shows one, left to right (screen k shows picture k mod N). Enabled through shell.json (plugins, disabledPlugins, cloneSourceRestores). Edits need `omarchy restart shell`; hot reload keeps the old code for this service"
+
+[[config]]
 path = ".config/omarchy/themes/afterwork-arcade"
-note = "Omarchy theme 'Afterwork Arcade': palette and three wallpapers from my arcade lobby render. Linked as ONE directory: the entry in home/ is a symlink to themes/afterwork-arcade, because `omarchy theme set` copies a theme with `cp -r`, which would copy per-file stow links as dangling ones"
+note = "Omarchy theme 'Afterwork Arcade': palette and wallpapers from my arcade lobby render (three of wall A, three -span2 ones with wall A and wall B for two monitors, which need the steveng.background plugin). Linked as ONE directory: the entry in home/ is a symlink to themes/afterwork-arcade, because `omarchy theme set` copies a theme with `cp -r`, which would copy per-file stow links as dangling ones"
 
 # ---------------------------------------------------------------------------
 # System state: group memberships (usermod -aG) and services kept enabled
